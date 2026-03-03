@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 900">
+  <defs>
+    <linearGradient id="flameGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FF9A2A"/>
+      <stop offset="60%" stop-color="#E36A1E"/>
+      <stop offset="100%" stop-color="#C94E12"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Badge Shape -->
+  <path d="M150 120 
+           L650 120 
+           Q700 120 700 170 
+           L700 620 
+           Q700 720 400 820 
+           Q100 720 100 620 
+           L100 170 
+           Q100 120 150 120 Z"
+        fill="#4A2A1A" stroke="#E36A1E" stroke-width="10"/>
+
+  <!-- Flame -->
+  <path d="M400 40 
+           C360 120, 300 160, 300 230 
+           C300 310, 350 360, 400 380 
+           C450 360, 500 310, 500 230 
+           C500 160, 440 120, 400 40 Z"
+        fill="url(#flameGrad)"/>
+
+  <!-- Crossed Tools -->
+  <line x1="320" y1="300" x2="480" y2="380" stroke="#F4EFE6" stroke-width="14" stroke-linecap="round"/>
+  <line x1="480" y1="300" x2="320" y2="380" stroke="#F4EFE6" stroke-width="14" stroke-linecap="round"/>
+
+  <!-- Text -->
+  <text x="400" y="470" text-anchor="middle"
+        font-family="Georgia, serif"
+        font-size="50" fill="#F4EFE6" letter-spacing="6">THE</text>
+
+  <text x="400" y="560" text-anchor="middle"
+        font-family="Georgia, serif"
+        font-size="110" font-weight="bold"
+        fill="#F4EFE6">SMOKE</text>
+
+  <text x="400" y="650" text-anchor="middle"
+        font-family="Georgia, serif"
+        font-size="110" font-weight="bold"
+        fill="#E36A1E">HOUSE</text>
+
+  <!-- Tagline -->
+  <text x="400" y="740" text-anchor="middle"
+        font-family="Arial, sans-serif"
+        font-size="30" fill="#F4EFE6" letter-spacing="3">
+        ORDER AHEAD • PICK UP • LEAVE
+  </text>
+</svg>
