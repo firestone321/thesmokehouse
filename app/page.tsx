@@ -7,19 +7,31 @@ import { MenuItem } from "@/lib/types";
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
+  const mockItems = getMockMenuItems();
   let menuItems: MenuItem[] = [];
 
   if (!hasSupabaseConfig()) {
-    menuItems = getMockMenuItems();
+    menuItems = mockItems;
   } else {
-    const { data: items } = await getSupabaseAdmin()
-      .from("menu_items")
-      .select("id,name,description,category,price,image_url,is_available")
-      .eq("is_available", true)
-      .order("category")
-      .order("name");
+    try {
+      const { data: items, error } = await getSupabaseAdmin()
+        .from("menu_items")
+        .select("id,name,description,category,price,image_url,is_available")
+        .eq("is_available", true)
+        .order("category")
+        .order("name");
 
-    menuItems = (items ?? []) as unknown as MenuItem[];
+      if (error) {
+        console.error("Failed to load menu_items from Supabase; falling back to mock data.", error.message);
+        menuItems = mockItems;
+      } else {
+        const safeItems = (items ?? []) as unknown as MenuItem[];
+        menuItems = safeItems.length > 0 ? safeItems : mockItems;
+      }
+    } catch (error) {
+      console.error("Unexpected menu load error; falling back to mock data.", error);
+      menuItems = mockItems;
+    }
   }
 
   return (
