@@ -76,6 +76,42 @@ const mockMenuItems: MenuItem[] = [
     is_available: true
   },
   {
+    id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+    name: "Smoked Lamb Shoulder",
+    description: "Slow-roasted lamb shoulder with garlic herb rub",
+    category: "roasted_meat",
+    price: 47000,
+    image_url: "https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=1200&q=80",
+    is_available: true
+  },
+  {
+    id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+    name: "Charred Pork Spare Ribs",
+    description: "Wood-smoked pork ribs finished over open flame",
+    category: "roasted_meat",
+    price: 44000,
+    image_url: "https://images.unsplash.com/photo-1532550907401-a500c9a57435?auto=format&fit=crop&w=1200&q=80",
+    is_available: true
+  },
+  {
+    id: "12121212-1212-4121-8121-121212121212",
+    name: "Smoked Beef Sausage Platter",
+    description: "House beef sausages with mustard and pickled onions",
+    category: "roasted_meat",
+    price: 33000,
+    image_url: "https://images.unsplash.com/photo-1527477396000-e27163b481c2?auto=format&fit=crop&w=1200&q=80",
+    is_available: true
+  },
+  {
+    id: "13131313-1313-4131-8131-131313131313",
+    name: "Fire-Grilled Turkey Wings",
+    description: "Smoked turkey wings glazed with pepper butter",
+    category: "roasted_meat",
+    price: 35000,
+    image_url: "https://images.unsplash.com/photo-1606728035253-49e8a23146de?auto=format&fit=crop&w=1200&q=80",
+    is_available: true
+  },
+  {
     id: "44444444-4444-4444-8444-444444444444",
     name: "Buttermilk Slaw",
     description: "Fresh crunchy slaw",
