@@ -57,7 +57,7 @@ export default async function HomePage() {
 
             <div className="mt-4 inline-flex items-center gap-2 rounded-md border border-emerald-300/25 bg-emerald-950/30 px-3 py-2 text-sm font-semibold text-emerald-100">
               <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-              <span>Open • Ready in 15-25 mins</span>
+              <span>Open - Ready in 15-25 mins</span>
             </div>
           </div>
         </div>
