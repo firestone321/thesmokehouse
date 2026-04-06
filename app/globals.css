@@ -8,6 +8,8 @@
   --walnut: #4b2e1f;
   --ember: #d9733a;
   --wood: #8a6246;
+  --font-body: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-heading: Impact, "Arial Narrow Bold", sans-serif;
 }
 
 * {
@@ -23,7 +25,7 @@ body {
 }
 
 body {
-  font-family: var(--font-body), "Segoe UI", sans-serif;
+  font-family: var(--font-body);
   color: #1f1a17;
 }
 
@@ -42,7 +44,7 @@ body {
 }
 
 .font-heading {
-  font-family: var(--font-heading), "Impact", sans-serif;
+  font-family: var(--font-heading);
   letter-spacing: 0.03em;
 }
 
