@@ -1,37 +1,44 @@
 import Image from "next/image";
 import { MenuClient } from "@/components/menu-client";
-import { getMockMenuItems } from "@/lib/mock-db";
-import { getSupabaseAdmin, hasSupabaseConfig } from "@/lib/supabase";
+import { mapSharedMenuItem } from "@/lib/shared-schema";
+import { getSupabaseAdmin } from "@/lib/supabase";
 import { MenuItem } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const mockItems = getMockMenuItems();
   let menuItems: MenuItem[] = [];
 
-  if (!hasSupabaseConfig()) {
-    menuItems = mockItems;
-  } else {
-    try {
-      const { data: items, error } = await getSupabaseAdmin()
-        .from("menu_items")
-        .select("id,name,description,category,price,image_url,is_available")
-        .eq("is_available", true)
-        .order("category")
-        .order("name");
+  try {
+    const { data: items, error } = await getSupabaseAdmin()
+      .from("menu_items")
+      .select(
+        `
+        id,
+        name,
+        description,
+        base_price,
+        image_url,
+        prep_type,
+        is_active,
+        is_available_today,
+        menu_categories (
+          code
+        )
+      `
+      )
+      .eq("is_active", true)
+      .eq("is_available_today", true)
+      .order("sort_order")
+      .order("name");
 
-      if (error) {
-        console.error("Failed to load menu_items from Supabase; falling back to mock data.", error.message);
-        menuItems = mockItems;
-      } else {
-        const safeItems = (items ?? []) as unknown as MenuItem[];
-        menuItems = safeItems.length > 0 ? safeItems : mockItems;
-      }
-    } catch (error) {
-      console.error("Unexpected menu load error; falling back to mock data.", error);
-      menuItems = mockItems;
+    if (error) {
+      console.error("Failed to load menu items from Supabase.", error.message);
+    } else {
+      menuItems = (items ?? []).map((item) => mapSharedMenuItem(item as never));
     }
+  } catch (error) {
+    console.error("Unexpected menu load error.", error);
   }
 
   return (

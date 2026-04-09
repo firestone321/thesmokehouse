@@ -1,23 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createMockOrder } from "@/lib/mock-db";
 import { generatePickupCode, generatePublicToken } from "@/lib/order-utils";
 import { allowOrder } from "@/lib/rate-limit";
-import { getSupabaseAdmin, hasSupabaseConfig } from "@/lib/supabase";
+import { pickupSelectionToPromisedAt } from "@/lib/shared-schema";
+import { getSupabaseAdmin } from "@/lib/supabase";
 import { createOrderSchema, getClientIp } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
 
 interface MenuPriceRow {
-  id: string;
-  price: number;
-  is_available: boolean;
+  id: number;
+  name: string;
+  base_price: number;
+  is_active: boolean;
+  is_available_today: boolean;
 }
 
 interface CreatedOrderRow {
-  id: string;
-  order_number: number;
+  id: number;
+  order_number: string;
   public_token: string;
-  pickup_code: string;
+  pickup_code: string | null;
 }
 
 export async function POST(req: NextRequest) {
@@ -36,23 +38,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: rateCheck.reason }, { status: 429 });
   }
 
-  if (!hasSupabaseConfig()) {
-    try {
-      const order = createMockOrder(input);
-      return NextResponse.json(order);
-    } catch (error) {
-      return NextResponse.json(
-        { error: error instanceof Error ? error.message : "Failed to create mock order" },
-        { status: 400 }
-      );
-    }
-  }
-
   const ids = Array.from(new Set(input.items.map((i) => i.menu_item_id)));
 
   const { data: menuItems, error: menuError } = await getSupabaseAdmin()
     .from("menu_items")
-    .select("id,price,is_available")
+    .select("id,name,base_price,is_active,is_available_today")
     .in("id", ids);
 
   if (menuError || !menuItems) {
@@ -60,23 +50,24 @@ export async function POST(req: NextRequest) {
   }
 
   const safeMenuItems = menuItems as unknown as MenuPriceRow[];
-  const menuMap = new Map(safeMenuItems.map((item: MenuPriceRow) => [item.id, item]));
+  const menuMap = new Map(safeMenuItems.map((item) => [item.id, item]));
 
   let total = 0;
-  const orderItemsToInsert: { menu_item_id: string; quantity: number; price_at_time: number }[] = [];
+  const orderItemsToInsert: { menu_item_id: number; menu_item_name: string; quantity: number; unit_price: number }[] = [];
 
   for (const item of input.items) {
     const dbItem = menuMap.get(item.menu_item_id);
-    if (!dbItem || !dbItem.is_available) {
+    if (!dbItem || !dbItem.is_active || !dbItem.is_available_today) {
       return NextResponse.json({ error: "One or more menu items are unavailable" }, { status: 400 });
     }
 
-    total += dbItem.price * item.qty;
+    total += dbItem.base_price * item.qty;
 
     orderItemsToInsert.push({
       menu_item_id: item.menu_item_id,
+      menu_item_name: dbItem.name,
       quantity: item.qty,
-      price_at_time: dbItem.price
+      unit_price: dbItem.base_price
     });
   }
 
@@ -84,17 +75,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid order total" }, { status: 400 });
   }
 
+  const promisedAt = pickupSelectionToPromisedAt(input.pickup_time);
+
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const { data: createdOrder, error: orderError } = await getSupabaseAdmin()
       .from("orders")
       .insert({
         public_token: generatePublicToken(),
         pickup_code: generatePickupCode(),
-        name: input.name,
-        phone: input.phone,
+        customer_name: input.name,
+        customer_phone: input.phone,
         notes: input.notes || null,
-        status: "received",
-        pickup_time: input.pickup_time,
+        status: "confirmed",
+        promised_at: promisedAt,
         total_amount: total
       })
       .select("id,order_number,public_token,pickup_code")
@@ -103,6 +96,18 @@ export async function POST(req: NextRequest) {
     if (orderError || !createdOrder) {
       const isUniqueConflict = orderError?.code === "23505";
       if (isUniqueConflict) continue;
+
+      if (
+        orderError?.message?.includes("null value in column \"order_number\"") ||
+        orderError?.message?.includes("public_token") ||
+        orderError?.message?.includes("pickup_code")
+      ) {
+        return NextResponse.json(
+          { error: "Storefront order support is not fully applied in Supabase yet. Run Phase 10 and try again." },
+          { status: 500 }
+        );
+      }
+
       return NextResponse.json({ error: "Failed to create order" }, { status: 500 });
     }
 

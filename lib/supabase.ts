@@ -11,7 +11,13 @@ type Database = {
   public: {
     Tables: Record<string, LooseTable>;
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: Record<
+      string,
+      {
+        Args: Record<string, unknown>;
+        Returns: unknown;
+      }
+    >;
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };
@@ -19,14 +25,18 @@ type Database = {
 
 let cachedClient: SupabaseClient<Database> | undefined;
 
+function getSupabaseUrl() {
+  return process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
+}
+
 export function hasSupabaseConfig(): boolean {
-  return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+  return Boolean(getSupabaseUrl() && process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
 export function getSupabaseAdmin() {
   if (cachedClient) return cachedClient;
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseUrl = getSupabaseUrl();
   const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl || !serviceRole) {

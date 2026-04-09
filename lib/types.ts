@@ -1,9 +1,9 @@
 export type MenuCategory = "roasted_meat" | "sides" | "drinks";
 
-export type OrderStatus = "received" | "preparing" | "ready" | "picked_up";
+export type OrderStatus = "new" | "confirmed" | "in_prep" | "on_smoker" | "ready" | "completed" | "cancelled";
 
 export interface MenuItem {
-  id: string;
+  id: number;
   name: string;
   description: string | null;
   category: MenuCategory;
@@ -13,7 +13,7 @@ export interface MenuItem {
 }
 
 export interface CartItem {
-  menu_item_id: string;
+  menu_item_id: number;
   name: string;
   price: number;
   qty: number;
@@ -21,18 +21,18 @@ export interface CartItem {
 }
 
 export interface OrderItem {
-  id: string;
-  menu_item_id: string;
+  id: number;
+  menu_item_id: number;
   quantity: number;
   price_at_time: number;
   menu_items?: Pick<MenuItem, "name" | "image_url">;
 }
 
 export interface Order {
-  id: string;
-  order_number: number;
+  id: number;
+  order_number: string;
   public_token: string;
-  pickup_code: string;
+  pickup_code: string | null;
   name: string;
   phone: string;
   status: OrderStatus;

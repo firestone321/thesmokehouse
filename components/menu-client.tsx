@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MenuCategory, MenuItem } from "@/lib/types";
 import { formatCurrency } from "@/lib/format";
 import { useCartStore } from "@/lib/store";
@@ -24,6 +24,21 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
   const total = useCartStore((s) => s.total);
   const hydrated = useCartHydration();
 
+  const availableCategories = useMemo(
+    () => CATEGORIES.filter((category) => items.some((item) => item.category === category.key)),
+    [items]
+  );
+
+  useEffect(() => {
+    if (availableCategories.length === 0) {
+      return;
+    }
+
+    if (!availableCategories.some((category) => category.key === active)) {
+      setActive(availableCategories[0]!.key);
+    }
+  }, [active, availableCategories]);
+
   const safeCartItems = hydrated ? cartItems : [];
   const safeCount = hydrated ? count() : 0;
   const safeTotal = hydrated ? total() : 0;
@@ -35,7 +50,7 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div>
           <div className="mb-3 flex gap-2 overflow-auto pb-1">
-            {CATEGORIES.map((cat) => {
+            {availableCategories.map((cat) => {
               const activeCls = active === cat.key ? "bg-ember text-white border-ember" : "bg-[#efe6d8] text-[#2c231d] border-[#dcc8b1]";
               return (
                 <button

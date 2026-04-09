@@ -73,14 +73,14 @@ export default function OrderTrackingPage() {
           </div>
           <div className="rounded-xl bg-sand p-4">
             <p className="text-xs uppercase tracking-wide text-stone-500">Pickup Code</p>
-            <p className="text-2xl font-bold text-ember">{order.pickup_code}</p>
+            <p className="text-2xl font-bold text-ember">{order.pickup_code ?? "Pending"}</p>
           </div>
         </div>
 
         <div className="mt-4 rounded-xl border border-[#e1d2c1] p-4">
           <p className="text-sm text-stone-600">Status</p>
           <p className="text-xl font-bold text-walnut">{formatStatus(order.status)}</p>
-          <p className="mt-1 text-sm text-stone-700">Pickup time: {order.pickup_time === "ASAP" ? "ASAP" : `${order.pickup_time} min`}</p>
+          <p className="mt-1 text-sm text-stone-700">Pickup time: {order.pickup_time}</p>
         </div>
 
         <div className="mt-4 space-y-2">

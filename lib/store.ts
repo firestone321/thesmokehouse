@@ -7,11 +7,26 @@ interface CartState {
   hasHydrated: boolean;
   setHasHydrated: (value: boolean) => void;
   addItem: (item: Omit<CartItem, "qty">) => void;
-  updateQty: (menu_item_id: string, qty: number) => void;
-  removeItem: (menu_item_id: string) => void;
+  updateQty: (menu_item_id: number, qty: number) => void;
+  removeItem: (menu_item_id: number) => void;
   clear: () => void;
   total: () => number;
   count: () => number;
+}
+
+function sanitizeCartItems(items: CartItem[]): CartItem[] {
+  return items
+    .map((item) => ({
+      ...item,
+      menu_item_id: Number(item.menu_item_id)
+    }))
+    .filter(
+      (item) =>
+        Number.isInteger(item.menu_item_id) &&
+        item.menu_item_id > 0 &&
+        Number.isFinite(item.price) &&
+        item.qty > 0
+    );
 }
 
 export const useCartStore = create<CartState>()(
@@ -49,8 +64,19 @@ export const useCartStore = create<CartState>()(
     {
       name: "smokehouse-cart",
       storage: createJSONStorage(() => localStorage),
+      migrate: (persistedState) => {
+        const state = persistedState as { items?: CartItem[] } | undefined;
+
+        return {
+          ...(persistedState as object),
+          items: sanitizeCartItems(state?.items ?? [])
+        };
+      },
       skipHydration: true,
       onRehydrateStorage: () => (state) => {
+        if (state) {
+          state.items = sanitizeCartItems(state.items);
+        }
         state?.setHasHydrated(true);
       }
     }

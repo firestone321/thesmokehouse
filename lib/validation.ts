@@ -1,12 +1,12 @@
 import { z } from "zod";
 
-export const statusSchema = z.enum(["received", "preparing", "ready", "picked_up"]);
+export const statusSchema = z.enum(["new", "confirmed", "in_prep", "on_smoker", "ready", "completed", "cancelled"]);
 
 export const createOrderSchema = z.object({
   items: z
     .array(
       z.object({
-        menu_item_id: z.string().uuid(),
+        menu_item_id: z.coerce.number().int().positive(),
         qty: z.number().int().min(1).max(20)
       })
     )
