@@ -3,19 +3,13 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
-import { MenuCategory, MenuItem } from "@/lib/types";
+import { MenuItem } from "@/lib/types";
 import { formatCurrency } from "@/lib/format";
 import { useCartStore } from "@/lib/store";
 import { useCartHydration } from "@/lib/use-cart-hydration";
 
-const CATEGORIES: { key: MenuCategory; label: string }[] = [
-  { key: "roasted_meat", label: "Roasted Meat" },
-  { key: "sides", label: "Sides" },
-  { key: "drinks", label: "Drinks" }
-];
-
 export function MenuClient({ items }: { items: MenuItem[] }) {
-  const [active, setActive] = useState<MenuCategory>("roasted_meat");
+  const [active, setActive] = useState<string>("");
   const [pickupTime, setPickupTime] = useState("ASAP");
 
   const cartItems = useCartStore((s) => s.items);
@@ -25,7 +19,19 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
   const hydrated = useCartHydration();
 
   const availableCategories = useMemo(
-    () => CATEGORIES.filter((category) => items.some((item) => item.category === category.key)),
+    () =>
+      Array.from(
+        items.reduce((categoryMap, item) => {
+          if (!categoryMap.has(item.category)) {
+            categoryMap.set(item.category, {
+              key: item.category,
+              label: item.category_label
+            });
+          }
+
+          return categoryMap;
+        }, new Map<string, { key: string; label: string }>())
+      ).map(([, category]) => category),
     [items]
   );
 
@@ -73,12 +79,12 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
                     <Image src={item.image_url} alt={item.name} fill className="object-cover" sizes="(max-width: 1024px) 50vw, 33vw" />
                   ) : (
                     <div className="flex h-full items-center justify-center text-xs font-semibold uppercase tracking-wide text-[#6f5745]">
-                      Fire roasted
+                      Fresh today
                     </div>
                   )}
-                  {item.category === "roasted_meat" ? (
-                    <span className="absolute left-2 top-2 rounded bg-ember px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-white">Best Seller</span>
-                  ) : null}
+                  <span className="absolute left-2 top-2 rounded bg-ember px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-white">
+                    {item.category_label}
+                  </span>
                 </div>
 
                 <div className="px-3 pb-2 pt-3">

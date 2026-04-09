@@ -1,4 +1,4 @@
-export type MenuCategory = "roasted_meat" | "sides" | "drinks";
+export type MenuCategory = string;
 
 export type OrderStatus = "new" | "confirmed" | "in_prep" | "on_smoker" | "ready" | "completed" | "cancelled";
 
@@ -7,6 +7,7 @@ export interface MenuItem {
   name: string;
   description: string | null;
   category: MenuCategory;
+  category_label: string;
   price: number;
   image_url: string | null;
   is_available: boolean;

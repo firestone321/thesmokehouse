@@ -35,18 +35,38 @@ function unwrapRelation<T>(value: T | T[] | null | undefined): T | null {
   return value ?? null;
 }
 
-export function mapPrepTypeToMenuCategory(prepType: string | null | undefined, category: MenuCategoryRelation): MenuCategory {
-  const categoryCode = unwrapRelation(category)?.code ?? null;
+function titleCaseFromCode(value: string): string {
+  return value
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
 
-  if (prepType === "drink" || categoryCode === "drinks") {
-    return "drinks";
+export function mapPrepTypeToMenuCategory(prepType: string | null | undefined, category: MenuCategoryRelation): {
+  code: MenuCategory;
+  label: string;
+} {
+  const normalizedCategory = unwrapRelation(category);
+  const categoryCode = normalizedCategory?.code?.trim() ?? "";
+  const categoryName = normalizedCategory?.name?.trim() ?? "";
+
+  if (categoryCode.length > 0) {
+    return {
+      code: categoryCode,
+      label: categoryName.length > 0 ? categoryName : titleCaseFromCode(categoryCode)
+    };
+  }
+
+  if (prepType === "drink") {
+    return { code: "drinks", label: "Drinks" };
   }
 
   if (prepType === "packed") {
-    return "sides";
+    return { code: "kitchen", label: "Kitchen" };
   }
 
-  return "roasted_meat";
+  return { code: "smokehouse", label: "Smokehouse" };
 }
 
 export function pickupSelectionToPromisedAt(pickupTime: string, now: Date = new Date()): string | null {
@@ -89,11 +109,14 @@ export function mapSharedMenuItem(row: {
   is_available_today?: boolean | null;
   menu_categories?: MenuCategoryRelation;
 }): MenuItem {
+  const category = mapPrepTypeToMenuCategory(row.prep_type, row.menu_categories ?? null);
+
   return {
     id: toNumber(row.id),
     name: row.name,
     description: row.description,
-    category: mapPrepTypeToMenuCategory(row.prep_type, row.menu_categories ?? null),
+    category: category.code,
+    category_label: category.label,
     price: toNumber(row.base_price),
     image_url: row.image_url,
     is_available: Boolean(row.is_active) && Boolean(row.is_available_today)

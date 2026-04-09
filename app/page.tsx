@@ -23,7 +23,8 @@ export default async function HomePage() {
         is_active,
         is_available_today,
         menu_categories (
-          code
+          code,
+          name
         )
       `
       )
