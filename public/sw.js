@@ -5,10 +5,10 @@ const CACHE_NAMES = [SHELL_CACHE_NAME, RUNTIME_CACHE_NAME, IMAGE_CACHE_NAME];
 const STATIC_NAVIGATION_PATHS = ["/", "/cart", "/offline"];
 const STATIC_ASSET_PATHS = [
   "/manifest.webmanifest",
-  "/icons/logo-square.png",
+  "/icons/logo-bigger.jpg",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
-  "/icons/logo-bigger.jpg"
+  "/icons/logo-square.png"
 ];
 const STATIC_PATHS = [...STATIC_NAVIGATION_PATHS, ...STATIC_ASSET_PATHS];
 
