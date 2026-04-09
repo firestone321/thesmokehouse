@@ -4,11 +4,11 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "The Smoke House",
-    template: "%s | The Smoke House"
+    default: "Firestone Country Smokehouse",
+    template: "%s | Firestone Country Smokehouse"
   },
-  description: "Premium family-friendly smokehouse takeaway",
-  applicationName: "The Smoke House",
+  description: "Premium family-friendly takeaway from Firestone Country Smokehouse",
+  applicationName: "Firestone Country Smokehouse",
   manifest: "/manifest.webmanifest",
   icons: {
     icon: [
@@ -21,7 +21,7 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    title: "Smoke House",
+    title: "Firestone Country Smokehouse",
     statusBarStyle: "default"
   },
   formatDetection: {

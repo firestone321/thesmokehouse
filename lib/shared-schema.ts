@@ -66,7 +66,7 @@ export function mapPrepTypeToMenuCategory(prepType: string | null | undefined, c
     return { code: "kitchen", label: "Kitchen" };
   }
 
-  return { code: "smokehouse", label: "Smokehouse" };
+  return { code: "smokehouse", label: "Firestone Country Smokehouse" };
 }
 
 export function pickupSelectionToPromisedAt(pickupTime: string, now: Date = new Date()): string | null {

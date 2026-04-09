@@ -1,7 +1,7 @@
 {
-  "name": "The Smoke House",
-  "short_name": "Smoke House",
-  "description": "Premium smokehouse takeaway ordering app",
+  "name": "Firestone Country Smokehouse",
+  "short_name": "Firestone",
+  "description": "Premium takeaway ordering app for Firestone Country Smokehouse",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

@@ -12,7 +12,7 @@ export default function OfflinePage() {
         <p className="text-xs font-bold uppercase tracking-[0.2em] text-ember">Offline</p>
         <h1 className="mt-2 text-3xl font-extrabold text-walnut">You&apos;re offline right now</h1>
         <p className="mt-3 text-sm text-stone-700">
-          The Smoke House app needs a connection to refresh menu availability and place orders. Reconnect, then try again.
+          Firestone Country Smokehouse needs a connection to refresh menu availability and place orders. Reconnect, then try again.
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
           <Link href="/" className="btn-primary rounded-xl px-5 py-3 text-sm font-semibold">

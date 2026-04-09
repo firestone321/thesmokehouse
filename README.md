@@ -1,4 +1,4 @@
-# The Smoke House PWA
+# Firestone Country Smokehouse PWA
 
 Production-ready guest checkout smokehouse takeaway app built with Next.js App Router, TypeScript, TailwindCSS, Supabase PostgreSQL, and secure server-only writes.
 
