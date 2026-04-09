@@ -1,11 +1,15 @@
 import type { Metadata, Viewport } from "next";
-import Script from "next/script";
+import { PwaRegister } from "@/components/pwa-register";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "The Smoke House",
+  title: {
+    default: "The Smoke House",
+    template: "%s | The Smoke House"
+  },
   description: "Premium family-friendly smokehouse takeaway",
-  manifest: "/manifest.json",
+  applicationName: "The Smoke House",
+  manifest: "/manifest.webmanifest",
   icons: {
     icon: [
       { url: "/icons/the_smoke_house_badge_logo.svg", type: "image/svg+xml" },
@@ -14,19 +18,31 @@ export const metadata: Metadata = {
     ],
     shortcut: ["/icons/the_smoke_house_badge_logo.svg"],
     apple: [{ url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }]
+  },
+  appleWebApp: {
+    capable: true,
+    title: "Smoke House",
+    statusBarStyle: "default"
+  },
+  formatDetection: {
+    telephone: false
   }
 };
 
 export const viewport: Viewport = {
-  themeColor: "#F4EFE6"
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#F4EFE6",
+  colorScheme: "light"
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body className="font-body">
+        <PwaRegister />
         {children}
-        <Script src="/sw-register.js" strategy="afterInteractive" />
       </body>
     </html>
   );
