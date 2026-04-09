@@ -12,11 +12,11 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   icons: {
     icon: [
-      { url: "/icons/the_smoke_house_badge_logo.svg", type: "image/svg+xml" },
+      { url: "/icons/logo-square.png", type: "image/png" },
       { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
       { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" }
     ],
-    shortcut: ["/icons/the_smoke_house_badge_logo.svg"],
+    shortcut: ["/icons/logo-square.png"],
     apple: [{ url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }]
   },
   appleWebApp: {

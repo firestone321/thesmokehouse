@@ -59,6 +59,9 @@ export default async function HomePage() {
 
         <div className="relative mx-auto flex min-h-[64vh] max-w-7xl items-end px-4 pb-10 pt-14 md:px-8 md:pb-12 md:pt-16">
           <div className="max-w-2xl">
+            <div className="relative mb-5 h-24 w-24 overflow-hidden rounded-[28px] border border-amber-100/30 bg-black/15 shadow-[0_20px_44px_rgba(0,0,0,0.22)] backdrop-blur-sm md:h-28 md:w-28">
+              <Image src="/icons/logo-bigger.jpg" alt="The Smoke House logo" fill className="object-cover" sizes="112px" priority />
+            </div>
             <p className="mb-2 text-xs font-bold uppercase tracking-[0.22em] text-amber-200">Slow-Fired Smokehouse</p>
             <h1 className="font-heading text-6xl leading-[0.9] text-cream md:text-8xl">THE SMOKE HOUSE</h1>
             <p className="mt-3 text-lg font-semibold text-amber-50 md:text-xl">Order ahead. Pick up. Leave.</p>
