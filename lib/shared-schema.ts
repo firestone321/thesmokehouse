@@ -1,4 +1,5 @@
 import { MenuCategory, MenuItem, Order, OrderItem, OrderStatus } from "@/lib/types";
+import { resolveStockForPortion } from "@/lib/menu-stock";
 
 type MenuCategoryRelation =
   | {
@@ -98,18 +99,28 @@ export function promisedAtToPickupLabel(promisedAt: string | null | undefined): 
   }).format(date);
 }
 
-export function mapSharedMenuItem(row: {
+export interface SharedMenuItemRow {
   id: unknown;
   name: string;
   description: string | null;
   base_price: unknown;
   image_url: string | null;
   prep_type: string | null;
+  portion_type_id?: unknown;
   is_active?: boolean | null;
   is_available_today?: boolean | null;
   menu_categories?: MenuCategoryRelation;
-}): MenuItem {
+  dailyStockMap?: Map<number, number>;
+  finishedStockMap?: Map<number, number>;
+}
+
+export function mapSharedMenuItem(row: SharedMenuItemRow): MenuItem {
   const category = mapPrepTypeToMenuCategory(row.prep_type, row.menu_categories ?? null);
+  const stock = resolveStockForPortion(
+    Number(row.portion_type_id ?? 0),
+    row.dailyStockMap ?? new Map<number, number>(),
+    row.finishedStockMap ?? new Map<number, number>()
+  );
 
   return {
     id: toNumber(row.id),
@@ -119,7 +130,8 @@ export function mapSharedMenuItem(row: {
     category_label: category.label,
     price: toNumber(row.base_price),
     image_url: row.image_url,
-    is_available: Boolean(row.is_active) && Boolean(row.is_available_today)
+    available_quantity: stock.availableQuantity,
+    is_available: Boolean(row.is_active) && Boolean(row.is_available_today) && stock.isInStock
   };
 }
 

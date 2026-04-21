@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
-import { mapSharedMenuItem } from "@/lib/shared-schema";
+import { loadSellableStockMaps } from "@/lib/menu-stock";
+import { mapSharedMenuItem, SharedMenuItemRow } from "@/lib/shared-schema";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const { data, error } = await getSupabaseAdmin()
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
     .from("menu_items")
     .select(
       `
@@ -15,6 +17,7 @@ export async function GET() {
       base_price,
       image_url,
       prep_type,
+      portion_type_id,
       is_active,
       is_available_today,
       menu_categories (
@@ -32,5 +35,23 @@ export async function GET() {
     return NextResponse.json({ error: "Failed to fetch menu" }, { status: 500 });
   }
 
-  return NextResponse.json((data ?? []).map((item) => mapSharedMenuItem(item as never)));
+  try {
+    const { dailyStockMap, finishedStockMap } = await loadSellableStockMaps(
+      supabase,
+      (data ?? []).map((item) => Number((item as SharedMenuItemRow).portion_type_id ?? 0))
+    );
+
+    return NextResponse.json(
+      (data ?? []).map((item) =>
+        mapSharedMenuItem({
+          ...(item as SharedMenuItemRow),
+          dailyStockMap,
+          finishedStockMap
+        })
+      )
+    );
+  } catch (stockError) {
+    console.error("Failed to resolve menu stock.", stockError);
+    return NextResponse.json({ error: "Failed to fetch menu" }, { status: 500 });
+  }
 }

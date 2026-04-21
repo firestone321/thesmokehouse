@@ -72,40 +72,57 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {filtered.map((item) => (
-              <article key={item.id} className="overflow-hidden rounded-xl border border-[#d8c1a7] bg-[#fffaf2] shadow-[0_8px_20px_rgba(64,45,30,0.1)]">
-                <div className="relative h-40 w-full bg-[#ede1d0]">
-                  {item.image_url ? (
-                    <Image src={item.image_url} alt={item.name} fill className="object-cover" sizes="(max-width: 1024px) 50vw, 33vw" />
-                  ) : (
-                    <div className="flex h-full items-center justify-center text-xs font-semibold uppercase tracking-wide text-[#6f5745]">
-                      Fresh today
-                    </div>
-                  )}
-                  <span className="absolute left-2 top-2 rounded bg-ember px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-white">
-                    {item.category_label}
-                  </span>
-                </div>
+            {filtered.map((item) => {
+              const isOutOfStock = !item.is_available;
+              const stockMessage = isOutOfStock
+                ? "Out of stock"
+                : item.available_quantity <= 10
+                  ? `Only ${item.available_quantity} left`
+                  : null;
 
-                <div className="px-3 pb-2 pt-3">
-                  <h3 className="text-base font-extrabold text-[#1f1a17]">{item.name}</h3>
-                  <p className="mt-1 min-h-10 text-sm font-medium text-[#4f4138]">
-                    {item.description ?? "House-smoked and finished fresh to order."}
-                  </p>
-                </div>
+              return (
+                <article key={item.id} className="overflow-hidden rounded-xl border border-[#d8c1a7] bg-[#fffaf2] shadow-[0_8px_20px_rgba(64,45,30,0.1)]">
+                  <div className="relative h-40 w-full bg-[#ede1d0]">
+                    {item.image_url ? (
+                      <Image src={item.image_url} alt={item.name} fill className="object-cover" sizes="(max-width: 1024px) 50vw, 33vw" />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-xs font-semibold uppercase tracking-wide text-[#6f5745]">
+                        Fresh today
+                      </div>
+                    )}
+                    <span className="absolute left-2 top-2 rounded bg-ember px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-white">
+                      {item.category_label}
+                    </span>
+                  </div>
 
-                <div className="flex items-center justify-between border-t border-[#dfcbb5] bg-[#f4e9d9] px-3 py-2">
-                  <span className="text-base font-black text-[#2b211b]">{formatCurrency(item.price)}</span>
-                  <button
-                    type="button"
-                    onClick={() => addItem({ menu_item_id: item.id, name: item.name, price: item.price, image_url: item.image_url })}
-                    className="btn-primary rounded-md px-4 py-2 text-xs font-extrabold uppercase tracking-wide"
-                  >
-                    Add
-                  </button>
-                </div>
-              </article>
-            ))}
+                  <div className="px-3 pb-2 pt-3">
+                    <h3 className="text-base font-extrabold text-[#1f1a17]">{item.name}</h3>
+                    <p className="mt-1 min-h-10 text-sm font-medium text-[#4f4138]">
+                      {item.description ?? "House-smoked and finished fresh to order."}
+                    </p>
+                    {stockMessage ? (
+                      <p className={`mt-2 text-xs font-bold uppercase tracking-wide ${isOutOfStock ? "text-[#8d3d2f]" : "text-[#9a5a1d]"}`}>
+                        {stockMessage}
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <div className="flex items-center justify-between border-t border-[#dfcbb5] bg-[#f4e9d9] px-3 py-2">
+                    <span className="text-base font-black text-[#2b211b]">{formatCurrency(item.price)}</span>
+                    <button
+                      type="button"
+                      disabled={isOutOfStock}
+                      onClick={() => addItem({ menu_item_id: item.id, name: item.name, price: item.price, image_url: item.image_url })}
+                      className={`rounded-md px-4 py-2 text-xs font-extrabold uppercase tracking-wide ${
+                        isOutOfStock ? "cursor-not-allowed bg-[#d2bdaa] text-[#fff7ec] opacity-80" : "btn-primary"
+                      }`}
+                    >
+                      {isOutOfStock ? "Sold Out" : "Add"}
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         </div>
 

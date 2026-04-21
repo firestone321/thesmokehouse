@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { loadSellableStockMaps, resolveStockForPortion } from "@/lib/menu-stock";
 import { generatePickupCode, generatePublicToken } from "@/lib/order-utils";
 import { allowOrder } from "@/lib/rate-limit";
 import { pickupSelectionToPromisedAt } from "@/lib/shared-schema";
@@ -11,6 +12,7 @@ interface MenuPriceRow {
   id: number;
   name: string;
   base_price: number;
+  portion_type_id: number | null;
   is_active: boolean;
   is_available_today: boolean;
 }
@@ -39,10 +41,15 @@ export async function POST(req: NextRequest) {
   }
 
   const ids = Array.from(new Set(input.items.map((i) => i.menu_item_id)));
+  const requestedQuantities = input.items.reduce((quantityMap, item) => {
+    quantityMap.set(item.menu_item_id, (quantityMap.get(item.menu_item_id) ?? 0) + item.qty);
+    return quantityMap;
+  }, new Map<number, number>());
+  const supabase = getSupabaseAdmin();
 
-  const { data: menuItems, error: menuError } = await getSupabaseAdmin()
+  const { data: menuItems, error: menuError } = await supabase
     .from("menu_items")
-    .select("id,name,base_price,is_active,is_available_today")
+    .select("id,name,base_price,portion_type_id,is_active,is_available_today")
     .in("id", ids);
 
   if (menuError || !menuItems) {
@@ -50,6 +57,21 @@ export async function POST(req: NextRequest) {
   }
 
   const safeMenuItems = menuItems as unknown as MenuPriceRow[];
+  let dailyStockMap = new Map<number, number>();
+  let finishedStockMap = new Map<number, number>();
+
+  try {
+    const stockMaps = await loadSellableStockMaps(
+      supabase,
+      safeMenuItems.map((item) => item.portion_type_id)
+    );
+    dailyStockMap = stockMaps.dailyStockMap;
+    finishedStockMap = stockMaps.finishedStockMap;
+  } catch (stockError) {
+    console.error("Failed to validate stock for order.", stockError);
+    return NextResponse.json({ error: "Could not validate menu items" }, { status: 500 });
+  }
+
   const menuMap = new Map(safeMenuItems.map((item) => [item.id, item]));
 
   let total = 0;
@@ -59,6 +81,17 @@ export async function POST(req: NextRequest) {
     const dbItem = menuMap.get(item.menu_item_id);
     if (!dbItem || !dbItem.is_active || !dbItem.is_available_today) {
       return NextResponse.json({ error: "One or more menu items are unavailable" }, { status: 400 });
+    }
+
+    const stock = resolveStockForPortion(dbItem.portion_type_id, dailyStockMap, finishedStockMap);
+    const requestedQuantity = requestedQuantities.get(item.menu_item_id) ?? item.qty;
+
+    if (stock.availableQuantity <= 0) {
+      return NextResponse.json({ error: `${dbItem.name} is out of stock` }, { status: 400 });
+    }
+
+    if (requestedQuantity > stock.availableQuantity) {
+      return NextResponse.json({ error: `Only ${stock.availableQuantity} ${dbItem.name} left` }, { status: 400 });
     }
 
     total += dbItem.base_price * item.qty;

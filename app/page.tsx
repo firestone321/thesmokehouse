@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { MenuClient } from "@/components/menu-client";
-import { mapSharedMenuItem } from "@/lib/shared-schema";
+import { loadSellableStockMaps } from "@/lib/menu-stock";
+import { mapSharedMenuItem, SharedMenuItemRow } from "@/lib/shared-schema";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { MenuItem } from "@/lib/types";
 
@@ -8,9 +9,10 @@ export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   let menuItems: MenuItem[] = [];
+  const supabase = getSupabaseAdmin();
 
   try {
-    const { data: items, error } = await getSupabaseAdmin()
+    const { data: items, error } = await supabase
       .from("menu_items")
       .select(
         `
@@ -20,6 +22,7 @@ export default async function HomePage() {
         base_price,
         image_url,
         prep_type,
+        portion_type_id,
         is_active,
         is_available_today,
         menu_categories (
@@ -36,7 +39,18 @@ export default async function HomePage() {
     if (error) {
       console.error("Failed to load menu items from Supabase.", error.message);
     } else {
-      menuItems = (items ?? []).map((item) => mapSharedMenuItem(item as never));
+      const { dailyStockMap, finishedStockMap } = await loadSellableStockMaps(
+        supabase,
+        (items ?? []).map((item) => Number((item as SharedMenuItemRow).portion_type_id ?? 0))
+      );
+
+      menuItems = (items ?? []).map((item) =>
+        mapSharedMenuItem({
+          ...(item as SharedMenuItemRow),
+          dailyStockMap,
+          finishedStockMap
+        })
+      );
     }
   } catch (error) {
     console.error("Unexpected menu load error.", error);
