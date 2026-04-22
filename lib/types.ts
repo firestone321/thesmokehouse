@@ -1,6 +1,7 @@
 export type MenuCategory = string;
 
 export type OrderStatus = "new" | "confirmed" | "in_prep" | "on_smoker" | "ready" | "completed" | "cancelled";
+export type PaymentStatus = "pending" | "paid" | "failed" | "cancelled";
 
 export interface MenuItem {
   id: number;
@@ -38,6 +39,7 @@ export interface Order {
   name: string;
   phone: string;
   status: OrderStatus;
+  payment_status: PaymentStatus;
   pickup_time: string;
   notes?: string | null;
   total_amount: number;

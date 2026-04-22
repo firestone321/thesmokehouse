@@ -18,6 +18,8 @@ export async function createOrder(payload: CreateOrderPayload): Promise<{
   public_token: string;
   order_number: string;
   pickup_code: string | null;
+  payment_status: string;
+  redirect_url: string | null;
 }> {
   const res = await fetch("/api/orders", {
     method: "POST",

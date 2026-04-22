@@ -16,6 +16,7 @@ interface CustomerOrderRow {
   customer_name: string | null;
   customer_phone: string | null;
   status: string;
+  payment_status: string | null;
   promised_at: string | null;
   notes: string | null;
   total_amount: number;
@@ -36,7 +37,7 @@ export async function GET(_req: Request, { params }: Params) {
   const { data, error } = await getSupabaseAdmin()
     .from("orders")
     .select(
-      "id,order_number,public_token,pickup_code,customer_name,customer_phone,status,promised_at,notes,total_amount,created_at,order_items(id,menu_item_id,menu_item_name,quantity,unit_price,menu_items(name,image_url))"
+      "id,order_number,public_token,pickup_code,customer_name,customer_phone,status,payment_status,promised_at,notes,total_amount,created_at,order_items(id,menu_item_id,menu_item_name,quantity,unit_price,menu_items(name,image_url))"
     )
     .eq("public_token", public_token)
     .single();

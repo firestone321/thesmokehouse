@@ -1,4 +1,4 @@
-import { MenuCategory, MenuItem, Order, OrderItem, OrderStatus } from "@/lib/types";
+import { MenuCategory, MenuItem, Order, OrderItem, OrderStatus, PaymentStatus } from "@/lib/types";
 import { resolveStockForPortion } from "@/lib/menu-stock";
 
 type MenuCategoryRelation =
@@ -143,6 +143,7 @@ export function mapSharedOrder(row: {
   customer_name: string | null;
   customer_phone: string | null;
   status: string;
+  payment_status?: string | null;
   promised_at: string | null;
   notes: string | null;
   total_amount: unknown;
@@ -180,6 +181,7 @@ export function mapSharedOrder(row: {
     name: row.customer_name ?? "",
     phone: row.customer_phone ?? "",
     status: row.status as OrderStatus,
+    payment_status: (row.payment_status ?? "pending") as PaymentStatus,
     pickup_time: promisedAtToPickupLabel(row.promised_at),
     notes: row.notes,
     total_amount: toNumber(row.total_amount),

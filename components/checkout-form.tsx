@@ -1,16 +1,13 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { useCartStore } from "@/lib/store";
 import { createOrder } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
 import { useCartHydration } from "@/lib/use-cart-hydration";
 
 export function CheckoutForm() {
-  const router = useRouter();
   const items = useCartStore((s) => s.items);
-  const clear = useCartStore((s) => s.clear);
   const total = useCartStore((s) => s.total);
   const hydrated = useCartHydration();
 
@@ -45,8 +42,12 @@ export function CheckoutForm() {
         notes: notes.trim()
       });
 
-      clear();
-      router.push(`/order/${result.public_token}`);
+      if (result.redirect_url) {
+        window.location.assign(result.redirect_url);
+        return;
+      }
+
+      window.location.assign(`/payment/result?token=${encodeURIComponent(result.public_token)}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to place order");
     } finally {
@@ -111,7 +112,7 @@ export function CheckoutForm() {
           <span className="text-xl font-bold text-walnut">{formatCurrency(safeTotal)}</span>
         </div>
         <button type="submit" disabled={disabled} className="btn-primary mt-4 w-full rounded-xl px-4 py-3 text-sm font-semibold disabled:opacity-60">
-          {submitting ? "Placing Order..." : "Place Order"}
+          {submitting ? "Preparing Payment..." : "Pay with Pesapal"}
         </button>
       </aside>
     </form>

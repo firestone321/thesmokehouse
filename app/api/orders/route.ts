@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loadSellableStockMaps, resolveStockForPortion } from "@/lib/menu-stock";
+import { getUgandaServiceDate } from "@/lib/menu-stock";
 import { generatePickupCode, generatePublicToken } from "@/lib/order-utils";
+import {
+  cancelRejectedOrderPaymentInitiation,
+  initiateOrderPaymentForOrder,
+  isPesapalInitiationRejectedError
+} from "@/lib/payments/order-payments";
 import { allowOrder } from "@/lib/rate-limit";
+import { resolveSiteOrigin } from "@/lib/site-url";
 import { pickupSelectionToPromisedAt } from "@/lib/shared-schema";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { createOrderSchema, getClientIp } from "@/lib/validation";
@@ -109,6 +116,7 @@ export async function POST(req: NextRequest) {
   }
 
   const promisedAt = pickupSelectionToPromisedAt(input.pickup_time);
+  const serviceDate = getUgandaServiceDate(promisedAt ? new Date(promisedAt) : new Date());
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const { data: createdOrder, error: orderError } = await getSupabaseAdmin()
@@ -119,7 +127,10 @@ export async function POST(req: NextRequest) {
         customer_name: input.name,
         customer_phone: input.phone,
         notes: input.notes || null,
-        status: "confirmed",
+        status: "new",
+        payment_status: "pending",
+        payment_provider: "pesapal",
+        service_date: serviceDate,
         promised_at: promisedAt,
         total_amount: total
       })
@@ -133,10 +144,12 @@ export async function POST(req: NextRequest) {
       if (
         orderError?.message?.includes("null value in column \"order_number\"") ||
         orderError?.message?.includes("public_token") ||
-        orderError?.message?.includes("pickup_code")
+        orderError?.message?.includes("pickup_code") ||
+        orderError?.message?.includes("payment_status") ||
+        orderError?.message?.includes("service_date")
       ) {
         return NextResponse.json(
-          { error: "Storefront order support is not fully applied in Supabase yet. Run Phase 10 and try again." },
+          { error: "Storefront payment support is not fully applied in Supabase yet. Run Phases 10 and 21 and try again." },
           { status: 500 }
         );
       }
@@ -158,11 +171,46 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Failed to save order items" }, { status: 500 });
     }
 
-    return NextResponse.json({
-      public_token: orderRow.public_token,
-      order_number: orderRow.order_number,
-      pickup_code: orderRow.pickup_code
-    });
+    try {
+      const payment = await initiateOrderPaymentForOrder(orderRow.public_token, {
+        requestOrigin: resolveSiteOrigin(req.url)
+      });
+
+      return NextResponse.json({
+        public_token: orderRow.public_token,
+        order_number: orderRow.order_number,
+        pickup_code: orderRow.pickup_code,
+        payment_status: payment.paymentStatus,
+        redirect_url: payment.redirectUrl
+      });
+    } catch (paymentError) {
+      if (
+        isPesapalInitiationRejectedError(paymentError) &&
+        !paymentError.providerReference &&
+        !paymentError.redirectUrl
+      ) {
+        const cancelledSnapshot = await cancelRejectedOrderPaymentInitiation({
+          publicToken: orderRow.public_token,
+          reasonCode: paymentError.code,
+          reasonMessage: paymentError.providerMessage
+        });
+
+        return NextResponse.json({
+          public_token: orderRow.public_token,
+          order_number: orderRow.order_number,
+          pickup_code: orderRow.pickup_code,
+          payment_status: cancelledSnapshot?.paymentStatus ?? "cancelled",
+          redirect_url: null
+        });
+      }
+
+      console.error("storefront_payment_initiation_failed", {
+        publicToken: orderRow.public_token,
+        error: paymentError instanceof Error ? paymentError.message : "unknown error"
+      });
+
+      return NextResponse.json({ error: "Unable to initiate payment." }, { status: 500 });
+    }
   }
 
   return NextResponse.json({ error: "Could not generate secure order token" }, { status: 500 });

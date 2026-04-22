@@ -5,7 +5,23 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { getOrderByPublicToken } from "@/lib/api";
 import { Order } from "@/lib/types";
-import { formatCurrency, formatStatus } from "@/lib/format";
+import { formatCurrency, formatPaymentStatus, formatStatus } from "@/lib/format";
+
+function getOrderHeading(order: Order) {
+  if (order.payment_status === "paid") {
+    return "Order Confirmed";
+  }
+
+  if (order.payment_status === "failed") {
+    return "Payment Failed";
+  }
+
+  if (order.payment_status === "cancelled") {
+    return "Payment Cancelled";
+  }
+
+  return "Payment Pending";
+}
 
 export default function OrderTrackingPage() {
   const params = useParams<{ public_token: string }>();
@@ -63,7 +79,7 @@ export default function OrderTrackingPage() {
   return (
     <main className="min-h-screen bg-cream p-6">
       <div className="mx-auto max-w-2xl rounded-2xl bg-white p-6 shadow-card">
-        <h1 className="text-3xl font-extrabold text-walnut">Order Confirmed</h1>
+        <h1 className="text-3xl font-extrabold text-walnut">{getOrderHeading(order)}</h1>
         <p className="mt-1 text-sm text-stone-600">Track updates live on this page.</p>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -80,8 +96,16 @@ export default function OrderTrackingPage() {
         <div className="mt-4 rounded-xl border border-[#e1d2c1] p-4">
           <p className="text-sm text-stone-600">Status</p>
           <p className="text-xl font-bold text-walnut">{formatStatus(order.status)}</p>
+          <p className="mt-1 text-sm text-stone-700">Payment: {formatPaymentStatus(order.payment_status)}</p>
           <p className="mt-1 text-sm text-stone-700">Pickup time: {order.pickup_time}</p>
         </div>
+
+        {order.payment_status !== "paid" ? (
+          <div className="mt-4 rounded-xl bg-[#fff8ef] p-4 text-sm leading-6 text-stone-700">
+            Stock stays untouched until payment is verified. Once Pesapal confirms payment, this order will move into
+            the live prep queue automatically.
+          </div>
+        ) : null}
 
         <div className="mt-4 space-y-2">
           {order.items?.map((item) => (
@@ -95,7 +119,9 @@ export default function OrderTrackingPage() {
         </div>
 
         <div className="mt-4 flex items-center justify-between border-t border-[#eadccc] pt-3">
-          <span className="font-semibold text-walnut">Total Paid</span>
+          <span className="font-semibold text-walnut">
+            {order.payment_status === "paid" ? "Total Paid" : "Order Total"}
+          </span>
           <span className="text-lg font-bold text-walnut">{formatCurrency(order.total_amount)}</span>
         </div>
 
