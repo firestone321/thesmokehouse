@@ -11,17 +11,23 @@ import { useCartHydration } from "@/lib/use-cart-hydration";
 export function MenuClient({ items }: { items: MenuItem[] }) {
   const [active, setActive] = useState<string>("");
   const [pickupTime, setPickupTime] = useState("ASAP");
+  const [selectedAddonIdsByItemId, setSelectedAddonIdsByItemId] = useState<Record<number, number[]>>({});
 
   const cartItems = useCartStore((s) => s.items);
   const addItem = useCartStore((s) => s.addItem);
+  const updateQty = useCartStore((s) => s.updateQty);
+  const removeItem = useCartStore((s) => s.removeItem);
   const count = useCartStore((s) => s.count);
   const total = useCartStore((s) => s.total);
   const hydrated = useCartHydration();
 
+  const addonItems = useMemo(() => items.filter((item) => item.category === "sides" || item.category === "drinks"), [items]);
+  const storefrontItems = useMemo(() => items.filter((item) => item.category !== "sides" && item.category !== "drinks"), [items]);
+
   const availableCategories = useMemo(
     () =>
       Array.from(
-        items.reduce((categoryMap, item) => {
+        storefrontItems.reduce((categoryMap, item) => {
           if (!categoryMap.has(item.category)) {
             categoryMap.set(item.category, {
               key: item.category,
@@ -32,7 +38,7 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
           return categoryMap;
         }, new Map<string, { key: string; label: string }>())
       ).map(([, category]) => category),
-    [items]
+    [storefrontItems]
   );
 
   useEffect(() => {
@@ -47,9 +53,76 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
 
   const safeCartItems = hydrated ? cartItems : [];
   const safeCount = hydrated ? count() : 0;
-  const safeTotal = hydrated ? total() : 0;
+  const cartTotal = hydrated ? total() : 0;
+  const addonIdsInCart = useMemo(
+    () => new Set(safeCartItems.filter((item) => addonItems.some((addon) => addon.id === item.menu_item_id)).map((item) => item.menu_item_id)),
+    [addonItems, safeCartItems]
+  );
+  const pendingAddonOwnerById = useMemo(() => {
+    const ownerById = new Map<number, number>();
 
-  const filtered = useMemo(() => items.filter((item) => item.category === active), [active, items]);
+    for (const [menuItemId, addonIds] of Object.entries(selectedAddonIdsByItemId)) {
+      for (const addonId of addonIds) {
+        ownerById.set(addonId, Number(menuItemId));
+      }
+    }
+
+    return ownerById;
+  }, [selectedAddonIdsByItemId]);
+
+  const filtered = useMemo(() => storefrontItems.filter((item) => item.category === active), [active, storefrontItems]);
+  const pendingAddonTotal = useMemo(
+    () =>
+      Object.values(selectedAddonIdsByItemId).reduce(
+        (sum, addonIds) =>
+          sum +
+          addonIds.reduce((addonSum, addonId) => {
+            const addon = addonItems.find((candidate) => candidate.id === addonId);
+
+            return addon?.is_available ? addonSum + addon.price : addonSum;
+          }, 0),
+        0
+      ),
+    [addonItems, selectedAddonIdsByItemId]
+  );
+  const displayedTotal = cartTotal + pendingAddonTotal;
+
+  function toggleAddon(menuItemId: number, addonId: number) {
+    const pendingOwnerId = pendingAddonOwnerById.get(addonId);
+
+    if (addonIdsInCart.has(addonId) || (pendingOwnerId && pendingOwnerId !== menuItemId)) {
+      return;
+    }
+
+    setSelectedAddonIdsByItemId((current) => {
+      const selectedAddonIds = current[menuItemId] ?? [];
+      const nextAddonIds = selectedAddonIds.includes(addonId)
+        ? selectedAddonIds.filter((id) => id !== addonId)
+        : [...selectedAddonIds, addonId];
+
+      return {
+        ...current,
+        [menuItemId]: nextAddonIds
+      };
+    });
+  }
+
+  function addItemWithAddons(item: MenuItem) {
+    addItem({ menu_item_id: item.id, name: item.name, price: item.price, image_url: item.image_url });
+
+    for (const addonId of selectedAddonIdsByItemId[item.id] ?? []) {
+      const addon = addonItems.find((candidate) => candidate.id === addonId);
+
+      if (addon?.is_available) {
+        addItem({ menu_item_id: addon.id, name: addon.name, price: addon.price, image_url: addon.image_url });
+      }
+    }
+
+    setSelectedAddonIdsByItemId((current) => ({
+      ...current,
+      [item.id]: []
+    }));
+  }
 
   return (
     <section id="menu-section" className="mx-auto max-w-7xl px-4 pb-24 pt-5 md:px-8 md:pt-6 lg:pb-10">
@@ -74,6 +147,13 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {filtered.map((item) => {
               const isOutOfStock = !item.is_available;
+              const selectedAddonIds = selectedAddonIdsByItemId[item.id] ?? [];
+              const selectedAddonTotal = selectedAddonIds.reduce((sum, addonId) => {
+                const addon = addonItems.find((candidate) => candidate.id === addonId);
+
+                return addon?.is_available ? sum + addon.price : sum;
+              }, 0);
+              const itemSelectionTotal = item.price + selectedAddonTotal;
               const stockMessage = isOutOfStock
                 ? "Out of stock"
                 : item.available_quantity <= 10
@@ -105,14 +185,64 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
                         {stockMessage}
                       </p>
                     ) : null}
+
+                    {addonItems.length > 0 ? (
+                      <div className="mt-3 border-t border-[#e4d0b9] pt-3">
+                        <p className="text-xs font-black uppercase tracking-wide text-[#6a4d38]">Add sides and drinks</p>
+                        <div className="mt-2 space-y-2">
+                          {addonItems.map((addon) => {
+                            const checked = selectedAddonIds.includes(addon.id);
+                            const pendingOwnerId = pendingAddonOwnerById.get(addon.id);
+                            const isAlreadyInCart = addonIdsInCart.has(addon.id);
+                            const isSelectedElsewhere = Boolean(pendingOwnerId && pendingOwnerId !== item.id);
+                            const isUnavailable = !addon.is_available || isOutOfStock || isAlreadyInCart || isSelectedElsewhere;
+                            const addonStatus = isAlreadyInCart
+                              ? "In cart"
+                              : isSelectedElsewhere
+                                ? "Selected"
+                                : addon.is_available
+                                  ? `+ ${formatCurrency(addon.price)}`
+                                  : "Sold out";
+
+                            return (
+                              <label
+                                key={addon.id}
+                                className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm font-bold ${
+                                  !isUnavailable || checked
+                                    ? "border-[#dcc8b1] bg-[#fff7ec] text-[#2c231d]"
+                                    : "border-[#e5d8c8] bg-[#f1e7db] text-[#9b8674]"
+                                }`}
+                              >
+                                <span className="flex min-w-0 items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    disabled={isUnavailable && !checked}
+                                    onChange={() => toggleAddon(item.id, addon.id)}
+                                    className="h-4 w-4 accent-[#a23b22]"
+                                  />
+                                  <span className="truncate">{addon.name}</span>
+                                </span>
+                                <span className="shrink-0 text-xs">{addonStatus}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="flex items-center justify-between border-t border-[#dfcbb5] bg-[#f4e9d9] px-3 py-2">
-                    <span className="text-base font-black text-[#2b211b]">{formatCurrency(item.price)}</span>
+                    <div>
+                      <span className="text-base font-black text-[#2b211b]">{formatCurrency(itemSelectionTotal)}</span>
+                      {selectedAddonTotal > 0 ? (
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-[#7a5c44]">Base {formatCurrency(item.price)}</p>
+                      ) : null}
+                    </div>
                     <button
                       type="button"
                       disabled={isOutOfStock}
-                      onClick={() => addItem({ menu_item_id: item.id, name: item.name, price: item.price, image_url: item.image_url })}
+                      onClick={() => addItemWithAddons(item)}
                       className={`rounded-md px-4 py-2 text-xs font-extrabold uppercase tracking-wide ${
                         isOutOfStock ? "cursor-not-allowed bg-[#d2bdaa] text-[#fff7ec] opacity-80" : "btn-primary"
                       }`}
@@ -142,17 +272,60 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
 
           <div className="mt-4 flex-1 overflow-y-auto pr-1">
             {safeCartItems.length === 0 ? (
-              <div className="rounded-md border border-dashed border-[#d4c1aa] bg-[#f6ecdf] p-4 text-sm font-semibold text-[#6a5647]">
+              <div className="rounded-xl border border-dashed border-[#d4c1aa] bg-[#f6ecdf] p-4 text-sm font-semibold leading-6 text-[#6a5647]">
                 Your order is empty. Add smoked favorites from the menu.
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {safeCartItems.map((item) => (
-                  <div key={item.menu_item_id} className="rounded-md border border-[#deccb7] bg-white px-3 py-2">
-                    <p className="text-sm font-extrabold text-[#2b211b]">{item.name}</p>
-                    <div className="mt-1 flex items-center justify-between text-xs font-semibold text-[#5d4a3f]">
-                      <span>{item.qty}x</span>
-                      <span>{formatCurrency(item.qty * item.price)}</span>
+                  <div key={item.menu_item_id} className="rounded-xl border border-[#deccb7] bg-white p-3">
+                    <div className="flex gap-3">
+                      <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-[#ede1d0]">
+                        {item.image_url ? (
+                          <Image src={item.image_url} alt={item.name} fill className="object-cover" sizes="64px" />
+                        ) : (
+                          <div className="flex h-full items-center justify-center text-[10px] font-bold uppercase tracking-wide text-[#7a5c44]">
+                            Fresh
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-extrabold text-[#2b211b]">{item.name}</p>
+                            <p className="mt-0.5 text-xs font-semibold text-[#6a5647]">{formatCurrency(item.price)} each</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeItem(item.menu_item_id)}
+                            className="rounded-md px-2 py-1 text-xs font-extrabold uppercase tracking-wide text-[#a23b22] transition hover:bg-[#f4e2d5]"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        <div className="mt-3 flex items-center justify-between gap-3">
+                          <div className="flex items-center overflow-hidden rounded-md border border-[#d6bea4] bg-[#fff7ec]">
+                            <button
+                              type="button"
+                              onClick={() => updateQty(item.menu_item_id, item.qty - 1)}
+                              className="h-8 w-8 text-lg font-black text-[#5b3826] transition hover:bg-[#f4e9d9]"
+                              aria-label={`Decrease ${item.name}`}
+                            >
+                              -
+                            </button>
+                            <span className="w-8 text-center text-sm font-extrabold text-[#2b211b]">{item.qty}</span>
+                            <button
+                              type="button"
+                              onClick={() => updateQty(item.menu_item_id, item.qty + 1)}
+                              className="h-8 w-8 text-lg font-black text-[#5b3826] transition hover:bg-[#f4e9d9]"
+                              aria-label={`Increase ${item.name}`}
+                            >
+                              +
+                            </button>
+                          </div>
+                          <p className="shrink-0 text-sm font-black text-[#2b211b]">{formatCurrency(item.qty * item.price)}</p>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -163,8 +336,14 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
           <div className="mt-4 border-t border-[#dbc5ad] pt-3">
             <div className="mb-3 flex items-center justify-between">
               <p className="text-sm font-bold uppercase tracking-wide text-[#5b4a3f]">Total</p>
-              <p className="text-2xl font-black text-[#241b15]">{formatCurrency(safeTotal)}</p>
+              <p className="text-2xl font-black text-[#241b15]">{formatCurrency(displayedTotal)}</p>
             </div>
+            {pendingAddonTotal > 0 ? (
+              <div className="mb-3 flex items-center justify-between text-xs font-bold uppercase tracking-wide text-[#7a5c44]">
+                <span>Selection</span>
+                <span>+ {formatCurrency(pendingAddonTotal)}</span>
+              </div>
+            ) : null}
             {safeCartItems.length === 0 ? (
               <button type="button" disabled className="w-full rounded-md bg-[#c9b39a] px-4 py-3 text-sm font-extrabold uppercase tracking-wide text-[#fff7ec] opacity-80">
                 Place Order
@@ -183,7 +362,7 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
         className="fixed bottom-4 left-4 right-4 z-40 flex items-center justify-between rounded-xl bg-walnut px-4 py-3 text-cream shadow-xl lg:hidden"
       >
         <span className="text-sm font-bold uppercase tracking-wide">{safeCount} Items</span>
-        <span className="text-base font-black">{formatCurrency(safeTotal)}</span>
+        <span className="text-base font-black">{formatCurrency(displayedTotal)}</span>
         <span className="rounded-md bg-ember px-3 py-1 text-sm font-bold uppercase tracking-wide text-white">View Cart</span>
       </Link>
     </section>

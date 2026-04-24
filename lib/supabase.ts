@@ -30,17 +30,21 @@ function getSupabaseUrl() {
 }
 
 export function hasSupabaseConfig(): boolean {
-  return Boolean(getSupabaseUrl() && process.env.SUPABASE_SERVICE_ROLE_KEY);
+  return Boolean(getSupabaseUrl() && getSupabaseServerKey());
+}
+
+function getSupabaseServerKey() {
+  return process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY;
 }
 
 export function getSupabaseAdmin() {
   if (cachedClient) return cachedClient;
 
   const supabaseUrl = getSupabaseUrl();
-  const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const serviceRole = getSupabaseServerKey();
 
   if (!supabaseUrl || !serviceRole) {
-    throw new Error("Missing Supabase environment variables");
+    throw new Error("Missing Supabase server environment variables");
   }
 
   cachedClient = createClient<Database>(supabaseUrl, serviceRole, {
