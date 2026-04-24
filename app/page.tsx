@@ -109,7 +109,7 @@ export default async function HomePage() {
             <p className="mt-3 text-lg font-semibold text-amber-50 md:text-xl">Order ahead. Pick up. Leave.</p>
 
             <div className="mt-5 flex flex-wrap gap-3">
-              <a href="/cart" className="btn-primary rounded-md px-6 py-3 text-sm font-extrabold uppercase tracking-wide">
+              <a href="#menu-section" className="btn-primary rounded-md px-6 py-3 text-sm font-extrabold uppercase tracking-wide">
                 Start Order
               </a>
               <a

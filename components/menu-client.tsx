@@ -11,7 +11,6 @@ import { useCartHydration } from "@/lib/use-cart-hydration";
 export function MenuClient({ items }: { items: MenuItem[] }) {
   const [active, setActive] = useState<string>("");
   const [pickupTime, setPickupTime] = useState("ASAP");
-  const [selectedAddonIdsByItemId, setSelectedAddonIdsByItemId] = useState<Record<number, number[]>>({});
 
   const cartItems = useCartStore((s) => s.items);
   const addItem = useCartStore((s) => s.addItem);
@@ -58,70 +57,25 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
     () => new Set(safeCartItems.filter((item) => addonItems.some((addon) => addon.id === item.menu_item_id)).map((item) => item.menu_item_id)),
     [addonItems, safeCartItems]
   );
-  const pendingAddonOwnerById = useMemo(() => {
-    const ownerById = new Map<number, number>();
-
-    for (const [menuItemId, addonIds] of Object.entries(selectedAddonIdsByItemId)) {
-      for (const addonId of addonIds) {
-        ownerById.set(addonId, Number(menuItemId));
-      }
-    }
-
-    return ownerById;
-  }, [selectedAddonIdsByItemId]);
 
   const filtered = useMemo(() => storefrontItems.filter((item) => item.category === active), [active, storefrontItems]);
-  const pendingAddonTotal = useMemo(
-    () =>
-      Object.values(selectedAddonIdsByItemId).reduce(
-        (sum, addonIds) =>
-          sum +
-          addonIds.reduce((addonSum, addonId) => {
-            const addon = addonItems.find((candidate) => candidate.id === addonId);
+  const displayedTotal = cartTotal;
 
-            return addon?.is_available ? addonSum + addon.price : addonSum;
-          }, 0),
-        0
-      ),
-    [addonItems, selectedAddonIdsByItemId]
-  );
-  const displayedTotal = cartTotal + pendingAddonTotal;
-
-  function toggleAddon(menuItemId: number, addonId: number) {
-    const pendingOwnerId = pendingAddonOwnerById.get(addonId);
-
-    if (addonIdsInCart.has(addonId) || (pendingOwnerId && pendingOwnerId !== menuItemId)) {
+  function toggleAddon(addon: MenuItem) {
+    if (!addon.is_available) {
       return;
     }
 
-    setSelectedAddonIdsByItemId((current) => {
-      const selectedAddonIds = current[menuItemId] ?? [];
-      const nextAddonIds = selectedAddonIds.includes(addonId)
-        ? selectedAddonIds.filter((id) => id !== addonId)
-        : [...selectedAddonIds, addonId];
-
-      return {
-        ...current,
-        [menuItemId]: nextAddonIds
-      };
-    });
-  }
-
-  function addItemWithAddons(item: MenuItem) {
-    addItem({ menu_item_id: item.id, name: item.name, price: item.price, image_url: item.image_url });
-
-    for (const addonId of selectedAddonIdsByItemId[item.id] ?? []) {
-      const addon = addonItems.find((candidate) => candidate.id === addonId);
-
-      if (addon?.is_available) {
-        addItem({ menu_item_id: addon.id, name: addon.name, price: addon.price, image_url: addon.image_url });
-      }
+    if (addonIdsInCart.has(addon.id)) {
+      removeItem(addon.id);
+      return;
     }
 
-    setSelectedAddonIdsByItemId((current) => ({
-      ...current,
-      [item.id]: []
-    }));
+    addItem({ menu_item_id: addon.id, name: addon.name, price: addon.price, image_url: addon.image_url });
+  }
+
+  function addMenuItem(item: MenuItem) {
+    addItem({ menu_item_id: item.id, name: item.name, price: item.price, image_url: item.image_url });
   }
 
   return (
@@ -147,13 +101,6 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {filtered.map((item) => {
               const isOutOfStock = !item.is_available;
-              const selectedAddonIds = selectedAddonIdsByItemId[item.id] ?? [];
-              const selectedAddonTotal = selectedAddonIds.reduce((sum, addonId) => {
-                const addon = addonItems.find((candidate) => candidate.id === addonId);
-
-                return addon?.is_available ? sum + addon.price : sum;
-              }, 0);
-              const itemSelectionTotal = item.price + selectedAddonTotal;
               const stockMessage = isOutOfStock
                 ? "Out of stock"
                 : item.available_quantity <= 10
@@ -191,18 +138,13 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
                         <p className="text-xs font-black uppercase tracking-wide text-[#6a4d38]">Add sides and drinks</p>
                         <div className="mt-2 space-y-2">
                           {addonItems.map((addon) => {
-                            const checked = selectedAddonIds.includes(addon.id);
-                            const pendingOwnerId = pendingAddonOwnerById.get(addon.id);
-                            const isAlreadyInCart = addonIdsInCart.has(addon.id);
-                            const isSelectedElsewhere = Boolean(pendingOwnerId && pendingOwnerId !== item.id);
-                            const isUnavailable = !addon.is_available || isOutOfStock || isAlreadyInCart || isSelectedElsewhere;
-                            const addonStatus = isAlreadyInCart
+                            const checked = addonIdsInCart.has(addon.id);
+                            const isUnavailable = !addon.is_available;
+                            const addonStatus = checked
                               ? "In cart"
-                              : isSelectedElsewhere
-                                ? "Selected"
-                                : addon.is_available
-                                  ? `+ ${formatCurrency(addon.price)}`
-                                  : "Sold out";
+                              : addon.is_available
+                                ? `+ ${formatCurrency(addon.price)}`
+                                : "Sold out";
 
                             return (
                               <label
@@ -217,8 +159,8 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
                                   <input
                                     type="checkbox"
                                     checked={checked}
-                                    disabled={isUnavailable && !checked}
-                                    onChange={() => toggleAddon(item.id, addon.id)}
+                                    disabled={isUnavailable}
+                                    onChange={() => toggleAddon(addon)}
                                     className="h-4 w-4 accent-[#a23b22]"
                                   />
                                   <span className="truncate">{addon.name}</span>
@@ -234,15 +176,12 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
 
                   <div className="flex items-center justify-between border-t border-[#dfcbb5] bg-[#f4e9d9] px-3 py-2">
                     <div>
-                      <span className="text-base font-black text-[#2b211b]">{formatCurrency(itemSelectionTotal)}</span>
-                      {selectedAddonTotal > 0 ? (
-                        <p className="text-[11px] font-bold uppercase tracking-wide text-[#7a5c44]">Base {formatCurrency(item.price)}</p>
-                      ) : null}
+                      <span className="text-base font-black text-[#2b211b]">{formatCurrency(item.price)}</span>
                     </div>
                     <button
                       type="button"
                       disabled={isOutOfStock}
-                      onClick={() => addItemWithAddons(item)}
+                      onClick={() => addMenuItem(item)}
                       className={`rounded-md px-4 py-2 text-xs font-extrabold uppercase tracking-wide ${
                         isOutOfStock ? "cursor-not-allowed bg-[#d2bdaa] text-[#fff7ec] opacity-80" : "btn-primary"
                       }`}
@@ -338,12 +277,6 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
               <p className="text-sm font-bold uppercase tracking-wide text-[#5b4a3f]">Total</p>
               <p className="text-2xl font-black text-[#241b15]">{formatCurrency(displayedTotal)}</p>
             </div>
-            {pendingAddonTotal > 0 ? (
-              <div className="mb-3 flex items-center justify-between text-xs font-bold uppercase tracking-wide text-[#7a5c44]">
-                <span>Selection</span>
-                <span>+ {formatCurrency(pendingAddonTotal)}</span>
-              </div>
-            ) : null}
             {safeCartItems.length === 0 ? (
               <button type="button" disabled className="w-full rounded-md bg-[#c9b39a] px-4 py-3 text-sm font-extrabold uppercase tracking-wide text-[#fff7ec] opacity-80">
                 Place Order
@@ -357,14 +290,16 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
         </aside>
       </div>
 
-      <Link
-        href="/cart"
-        className="fixed bottom-4 left-4 right-4 z-40 flex items-center justify-between rounded-xl bg-walnut px-4 py-3 text-cream shadow-xl lg:hidden"
-      >
-        <span className="text-sm font-bold uppercase tracking-wide">{safeCount} Items</span>
-        <span className="text-base font-black">{formatCurrency(displayedTotal)}</span>
-        <span className="rounded-md bg-ember px-3 py-1 text-sm font-bold uppercase tracking-wide text-white">View Cart</span>
-      </Link>
+      {safeCount > 0 ? (
+        <Link
+          href="/cart"
+          className="fixed bottom-4 left-4 right-4 z-40 flex items-center justify-between rounded-xl bg-walnut px-4 py-3 text-cream shadow-xl lg:hidden"
+        >
+          <span className="text-sm font-bold uppercase tracking-wide">{safeCount} Items</span>
+          <span className="text-base font-black">{formatCurrency(displayedTotal)}</span>
+          <span className="rounded-md bg-ember px-3 py-1 text-sm font-bold uppercase tracking-wide text-white">View Cart</span>
+        </Link>
+      ) : null}
     </section>
   );
 }
