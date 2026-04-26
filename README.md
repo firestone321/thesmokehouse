@@ -1,133 +1,118 @@
-# Firestone Country Smokehouse PWA
+# Firestone Country Smokehouse Storefront
 
-Production-ready guest checkout smokehouse takeaway app built with Next.js App Router, TypeScript, TailwindCSS, Supabase PostgreSQL, and secure server-only writes.
+Customer-facing takeaway storefront for Firestone Country Smokehouse, built with Next.js App Router, TypeScript, TailwindCSS, Supabase PostgreSQL, Zustand cart state, Pesapal payments, and PWA support.
 
 ## Stack
-- Next.js (App Router)
+
+- Next.js App Router
 - TypeScript
 - TailwindCSS
 - Supabase PostgreSQL
-- Next.js Route Handlers (server API)
-- Zustand (cart state)
-- PWA (manifest + service worker)
+- Next.js Route Handlers
+- Zustand cart state
+- Pesapal payment initiation, callback, IPN, and status verification
+- PWA manifest, install icons, offline page, and service worker caching
 
-## Security Model
-- Browser never writes directly to Supabase.
-- `SUPABASE_SERVICE_ROLE_KEY` is used only in server code.
-- All writes happen through `app/api/*` route handlers.
-- Order totals are computed server-side from DB prices.
-- Public customer tracking uses `public_token` only (not sequential IDs).
-- Admin status updates require `x-admin-password` matching `ADMIN_PASSWORD`.
-- Basic in-memory rate limiting by IP and hashed phone for spam mitigation.
+## Current Flow
+
+- Customers browse stock-aware menu items from shared Smokehouse admin data.
+- Sides and drinks render as add-ons under protein cards, but still submit as normal order items.
+- Checkout creates a pending `orders` row and immediately starts Pesapal payment.
+- Stock is not reserved while payment is pending.
+- Verified Pesapal payment marks the order `paid`, moves it into the `confirmed` kitchen queue, and reserves service-day stock.
+- Staff progress paid orders through `confirmed -> in_prep -> ready -> completed` in the admin app.
+- Pickup completion is gated by the customer's pickup code.
 
 ## Routes
-- `/` menu + mobile sticky cart + desktop cart section
+
+- `/` menu with add-on selection and desktop cart
 - `/cart`
 - `/checkout`
+- `/payment/result`
 - `/order/[public_token]`
-- `/admin`
+- `/offline`
 
 ## API
+
 - `GET /api/menu`
 - `POST /api/orders`
 - `GET /api/orders/[public_token]`
-- `GET /api/admin/orders` (admin password required)
-- `PATCH /api/admin/orders/[id]` (admin password required)
+- `GET /api/payments/pesapal/callback`
+- `GET /api/payments/pesapal/ipn`
+- `POST /api/payments/pesapal/ipn`
+- `GET /api/payments/pesapal/status`
 
 ## Environment Variables
-Create `.env.local`:
+
+Create `.env.local` with the Supabase, site URL, and Pesapal values used by the storefront server routes:
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=your_project_url
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-ADMIN_PASSWORD=your_admin_password
+SUPABASE_SECRET_KEY=optional_service_role_alias
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
+SITE_URL=http://localhost:3000
+PESAPAL_BASE_URL=https://cybqa.pesapal.com/pesapalv3
+PESAPAL_CONSUMER_KEY=your_pesapal_consumer_key
+PESAPAL_CONSUMER_SECRET=your_pesapal_consumer_secret
+PESAPAL_FORCE_INIT_REJECTION=false
 ```
+
+`SUPABASE_SERVICE_ROLE_KEY` is preferred. `SUPABASE_SECRET_KEY` is accepted as a fallback for local compatibility.
 
 ## Database Setup
-Run this SQL in Supabase SQL editor:
 
-```sql
-create extension if not exists pgcrypto;
+This storefront now uses the shared Smokehouse operational schema owned by the admin repo. The current project database has already had the storefront/order/payment phases applied; keep this list as the baseline required for any fresh Supabase environment:
 
-create sequence if not exists order_number_seq start 1001;
+- `db/phase-10-storefront-shared-order-support.sql`
+- `db/phase-19-order-lifecycle-simplification.sql`
+- `db/phase-21-pesapal-paid-reservations.sql`
+- `db/phase-22-admin-rls-lockdown.sql`
+- `db/phase-23-orders-realtime-publication.sql`
 
-create table if not exists menu_items (
-  id uuid primary key default gen_random_uuid(),
-  name text not null,
-  description text,
-  category text not null check (category in ('roasted_meat', 'sides', 'drinks')),
-  price integer not null check (price > 0),
-  image_url text,
-  is_available boolean default true,
-  created_at timestamptz default now()
-);
+The historical standalone schema in `supabase/schema.sql` is kept only as an archive of the first storefront prototype and should not be applied to a current Smokehouse database.
 
-create table if not exists orders (
-  id uuid primary key default gen_random_uuid(),
-  order_number bigint not null unique default nextval('order_number_seq'),
-  public_token text unique not null,
-  pickup_code text not null check (pickup_code ~ '^[0-9]{4}$'),
-  name text not null,
-  phone text not null,
-  notes text,
-  status text not null check (status in ('received', 'preparing', 'ready', 'picked_up')),
-  pickup_time text not null,
-  total_amount integer not null check (total_amount > 0),
-  created_at timestamptz default now()
-);
+## Security Model
 
-create table if not exists order_items (
-  id uuid primary key default gen_random_uuid(),
-  order_id uuid not null references orders(id) on delete cascade,
-  menu_item_id uuid not null references menu_items(id),
-  quantity integer not null check (quantity > 0),
-  price_at_time integer not null check (price_at_time > 0)
-);
+- Browser code never writes directly to Supabase.
+- The service-role key is read only by server-side route handlers.
+- Order totals are recomputed server-side from database prices.
+- Public order tracking uses `public_token`, not sequential database IDs.
+- Stock reservation is owned by database functions after payment verification.
+- Basic in-memory rate limiting protects order creation by IP and phone hash.
 
-create index if not exists idx_orders_public_token on orders(public_token);
-create index if not exists idx_orders_created_at on orders(created_at desc);
-create index if not exists idx_order_items_order_id on order_items(order_id);
-```
+## PWA
 
-Schema file is also at `supabase/schema.sql`.
+- Manifest: `public/manifest.webmanifest`
+- Service worker: `public/sw.js`
+- Registration component: `components/pwa-register.tsx`
+- Icons: `public/icons/logo-square.png`, `public/icons/icon-192.png`, `public/icons/icon-512.png`
 
-## RLS Guidance (Defense in Depth)
-Even with server-only service-role usage, enable RLS and least-privilege policies:
-- Keep service role key only on server.
-- Enable RLS on all tables.
-- Add explicit policies only for required read/write actors.
-- If anon direct menu reads are needed later, add read-only policy for available menu items.
+The service worker caches the shell, selected static navigation routes, runtime assets, and images. Checkout, payment, API, and order-tracking pages remain network-first/dynamic.
 
 ## Run Locally
+
 ```bash
 npm install
 npm run dev
 ```
 
 Optional seed menu:
+
 ```bash
 npm run seed
 ```
 
-## PWA
-- Manifest: `public/manifest.json`
-- Service worker: `public/sw.js`
-- Registration: `public/sw-register.js`
-- Icons: `public/icons/icon-192.png`, `public/icons/icon-512.png`
+## Deploy To Vercel
 
-Caching includes app shell, `/api/menu`, and images.
-
-## Deploy to Vercel
 1. Push repo to Git provider.
-2. Import project in Vercel.
-3. Set env vars in Vercel Project Settings:
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `SUPABASE_SERVICE_ROLE_KEY`
-   - `ADMIN_PASSWORD`
-4. Deploy.
-5. Run `supabase/schema.sql` in production DB.
-6. Optionally run `npm run seed` from local with production env vars.
+2. Import the project in Vercel.
+3. Set the Supabase, site URL, and Pesapal environment variables.
+4. Confirm the target Supabase project has the shared admin schema baseline listed above.
+5. Deploy and run a Pesapal sandbox checkout from order creation through admin pickup-code completion.
 
-## Notes
-- In-memory rate limiting resets between server restarts/instances. For multi-instance production hardening, swap to Redis-based limiter.
-- Placeholder app icons are included; replace with branded 192x192 and 512x512 PNGs.
+## Launch Notes
+
+- Push notifications are not implemented yet.
+- Payment result pages exist but still need stronger Smokehouse branding and clearer recovery paths.
+- Run end-to-end payment tests for paid, pending, failed, cancelled, abandoned, delayed IPN, and duplicate callback/IPN cases before final launch.

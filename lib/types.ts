@@ -1,6 +1,6 @@
 export type MenuCategory = string;
 
-export type OrderStatus = "new" | "confirmed" | "in_prep" | "on_smoker" | "ready" | "completed" | "cancelled";
+export type OrderStatus = "new" | "confirmed" | "in_prep" | "ready" | "completed" | "cancelled";
 export type PaymentStatus = "pending" | "paid" | "failed" | "cancelled";
 
 export interface MenuItem {

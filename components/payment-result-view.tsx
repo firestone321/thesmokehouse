@@ -31,6 +31,33 @@ type PaymentStatusResponse = {
 const POLL_INTERVAL_MS = 10_000;
 const MAX_POLL_ATTEMPTS = 5;
 
+const stateStyles = {
+  success: {
+    eyebrow: "Payment cleared",
+    panel: "border-[#2F6B45]/25 bg-[#F2FBF5]",
+    marker: "bg-[#2F6B45]",
+    title: "text-[#1F4F33]"
+  },
+  pending: {
+    eyebrow: "Verification running",
+    panel: "border-[#C28A2E]/30 bg-[#FFF7E5]",
+    marker: "bg-[#C28A2E]",
+    title: "text-[#6D4415]"
+  },
+  failed: {
+    eyebrow: "Payment problem",
+    panel: "border-[#A23B22]/25 bg-[#FFF1E8]",
+    marker: "bg-[#A23B22]",
+    title: "text-[#7A2A18]"
+  },
+  cancelled: {
+    eyebrow: "Checkout stopped",
+    panel: "border-[#61564D]/25 bg-[#F4EFE6]",
+    marker: "bg-[#61564D]",
+    title: "text-[#3A3029]"
+  }
+};
+
 function getTitle(viewState: PaymentResultOrder["viewState"] | null) {
   if (viewState === "success") return "Payment confirmed";
   if (viewState === "failed") return "Payment failed";
@@ -133,6 +160,9 @@ export function PaymentResultView() {
   const order = payload?.order ?? null;
   const title = getTitle(order?.viewState ?? null);
   const message = getMessage(order);
+  const currentState = order?.viewState ?? (hint === "cancelled" ? "cancelled" : "pending");
+  const styles = stateStyles[currentState];
+  const itemCount = order?.items.reduce((sum, item) => sum + item.quantity, 0) ?? 0;
 
   useEffect(() => {
     if (order?.viewState !== "success" || hasClearedCartRef.current) {
@@ -157,53 +187,113 @@ export function PaymentResultView() {
   }, [error, isLoading, order?.viewState, pollAttempts, token]);
 
   return (
-    <main className="min-h-screen bg-cream p-6">
-      <div className="mx-auto max-w-3xl rounded-2xl bg-white p-6 shadow-card">
-        <p className="text-xs font-bold uppercase tracking-[0.22em] text-stone-500">Firestone Country Smokehouse</p>
-        <h1 className="mt-2 text-3xl font-extrabold text-walnut">{title}</h1>
-        <p className="mt-3 text-sm leading-6 text-stone-700">
-          {isLoading ? "Verifying your payment with the backend..." : error ?? message}
-        </p>
-
-        {order && !isLoading && !error ? (
-          <section className="mt-5 rounded-xl border border-[#e1d2c1] bg-[#fff8ef] p-4 text-sm text-stone-700">
-            <h2 className="text-lg font-bold text-walnut">Payment summary</h2>
-            <div className="mt-3 space-y-2">
-              <p>Order number: #{order.orderNumber}</p>
-              <p>Order total: {formatCurrency(order.totalUGX)}</p>
-              <p>Payment status: {formatPaymentStatus(order.paymentStatus)}</p>
-              <p>Order status: {formatStatus(order.orderStatus)}</p>
-              <p>Verified with Pesapal: {order.verified ? "yes" : "no"}</p>
-              <p>Pickup code: {order.pickupCode ?? "Pending"}</p>
-            </div>
-          </section>
-        ) : null}
-
-        <div className="mt-6 flex flex-wrap gap-3">
-          {order ? (
-            <Link href={`/order/${order.publicToken}`} className="btn-primary rounded-xl px-4 py-3 text-sm font-semibold">
-              View Order
-            </Link>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => {
-              setPollAttempts(0);
-              setRequestSequence((current) => current + 1);
-            }}
-            disabled={!token || isLoading}
-            className="rounded-xl border border-[#d8c1a7] px-4 py-3 text-sm font-semibold text-walnut disabled:opacity-60"
-          >
-            Check Status
-          </button>
-          <Link href="/checkout" className="rounded-xl border border-[#d8c1a7] px-4 py-3 text-sm font-semibold text-walnut">
-            Back to Checkout
-          </Link>
-          <Link href="/" className="rounded-xl border border-[#d8c1a7] px-4 py-3 text-sm font-semibold text-walnut">
-            Browse Menu
-          </Link>
+    <main className="bg-[#F4EFE6]">
+      <section className="border-b border-[#2B211B]/10 bg-[#1C1410] text-[#FFF7EC]">
+        <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 md:grid-cols-[minmax(0,1fr)_360px] md:items-end md:px-8 md:py-14">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#E6B36B]">{styles.eyebrow}</p>
+            <h1 className="mt-3 font-heading text-5xl leading-none tracking-normal text-[#F8E6C8] md:text-7xl">{title}</h1>
+            <p className="mt-4 max-w-2xl text-base font-semibold leading-7 text-[#D8C4AA]">
+              {isLoading ? "Verifying your payment with Pesapal and the Smokehouse kitchen..." : error ?? message}
+            </p>
+          </div>
+          <div className="rounded-md border border-[#F7C35F]/15 bg-[#2A211A] p-5">
+            <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#E6B36B]">Pickup signal</p>
+            <p className="mt-3 text-4xl font-black text-[#F7C35F]">{order?.pickupCode ?? "----"}</p>
+            <p className="mt-2 text-sm font-semibold leading-6 text-[#D8C4AA]">
+              Show this code when your order reaches ready. Pending payments keep stock untouched.
+            </p>
+          </div>
         </div>
-      </div>
+      </section>
+
+      <section className="px-4 py-8 md:px-8">
+        <div className="mx-auto grid max-w-7xl gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
+          <section className={`rounded-md border p-5 shadow-[0_20px_50px_rgba(42,33,26,0.1)] ${styles.panel}`}>
+            <div className="flex items-start gap-4">
+              <span className={`mt-1 h-4 w-4 shrink-0 rounded-full ${styles.marker}`} />
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#6A5647]">Payment status</p>
+                <h2 className={`mt-2 text-2xl font-black uppercase tracking-wide ${styles.title}`}>
+                  {isLoading ? "Checking payment" : error ? "Status unavailable" : formatPaymentStatus(order?.paymentStatus ?? "pending")}
+                </h2>
+                <p className="mt-3 max-w-2xl text-sm font-semibold leading-7 text-[#4A3A30]">
+                  {isLoading ? "This can take a few seconds after returning from Pesapal." : error ?? message}
+                </p>
+              </div>
+            </div>
+
+            {order && !isLoading && !error ? (
+              <div className="mt-6 grid gap-3 md:grid-cols-2">
+                <div className="rounded-md border border-[#2B211B]/10 bg-white/70 p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8A6246]">Order number</p>
+                  <p className="mt-2 text-2xl font-black text-[#2A211A]">#{order.orderNumber}</p>
+                </div>
+                <div className="rounded-md border border-[#2B211B]/10 bg-white/70 p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8A6246]">Total</p>
+                  <p className="mt-2 text-2xl font-black text-[#2A211A]">{formatCurrency(order.totalUGX)}</p>
+                </div>
+                <div className="rounded-md border border-[#2B211B]/10 bg-white/70 p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8A6246]">Kitchen state</p>
+                  <p className="mt-2 text-lg font-black text-[#2A211A]">{formatStatus(order.orderStatus)}</p>
+                </div>
+                <div className="rounded-md border border-[#2B211B]/10 bg-white/70 p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8A6246]">Pesapal check</p>
+                  <p className="mt-2 text-lg font-black text-[#2A211A]">{order.verified ? "Verified" : "Not verified yet"}</p>
+                </div>
+              </div>
+            ) : null}
+
+            {order?.items.length ? (
+              <div className="mt-6 rounded-md border border-[#2B211B]/10 bg-white/70 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-sm font-black uppercase tracking-wide text-[#2A211A]">Order items</h3>
+                  <p className="text-sm font-bold text-[#6A5647]">{itemCount} items</p>
+                </div>
+                <ul className="mt-3 divide-y divide-[#2B211B]/10 text-sm font-semibold text-[#4A3A30]">
+                  {order.items.map((item) => (
+                    <li key={item.name} className="flex justify-between gap-4 py-2">
+                      <span>{item.name}</span>
+                      <span>x{item.quantity}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </section>
+
+          <aside className="h-fit rounded-md border border-[#2B211B]/10 bg-[#FFF8EF] p-5 shadow-[0_20px_50px_rgba(42,33,26,0.1)] lg:sticky lg:top-24">
+            <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#8A6246]">Next move</p>
+            <div className="mt-4 space-y-3">
+              {order ? (
+                <Link href={`/order/${order.publicToken}`} className="btn-primary block rounded-md px-4 py-3 text-center text-sm font-extrabold uppercase tracking-wide">
+                  View Order
+                </Link>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => {
+                  setPollAttempts(0);
+                  setRequestSequence((current) => current + 1);
+                }}
+                disabled={!token || isLoading}
+                className="block w-full rounded-md border border-[#4B2E1F]/25 bg-white px-4 py-3 text-center text-sm font-extrabold uppercase tracking-wide text-[#4B2E1F] transition hover:bg-[#F8E6C8] disabled:opacity-60"
+              >
+                Check Status
+              </button>
+              <Link href="/checkout" className="block rounded-md border border-[#4B2E1F]/25 bg-white px-4 py-3 text-center text-sm font-extrabold uppercase tracking-wide text-[#4B2E1F] hover:bg-[#F8E6C8]">
+                Back to Checkout
+              </Link>
+              <Link href="/" className="block rounded-md border border-[#4B2E1F]/25 bg-white px-4 py-3 text-center text-sm font-extrabold uppercase tracking-wide text-[#4B2E1F] hover:bg-[#F8E6C8]">
+                Browse Menu
+              </Link>
+            </div>
+            <div className="mt-5 border-t border-[#2B211B]/10 pt-5 text-sm font-semibold leading-6 text-[#6A5647]">
+              <p>Paid orders enter the kitchen queue automatically. Ready orders are completed only after pickup-code verification.</p>
+            </div>
+          </aside>
+        </div>
+      </section>
     </main>
   );
 }
