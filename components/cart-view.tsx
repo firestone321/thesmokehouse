@@ -18,20 +18,20 @@ export function CartView({ showCheckout = true }: { showCheckout?: boolean }) {
 
   if (safeItems.length === 0) {
     return (
-      <section className="mx-auto grid max-w-6xl gap-6 overflow-hidden rounded-md border border-[#2B211B]/10 bg-[#FFF8EF] shadow-[0_20px_50px_rgba(42,33,26,0.12)] md:grid-cols-[1fr_340px]">
+      <section className="mx-auto grid max-w-6xl gap-6 overflow-hidden rounded-md border border-[#C3C5C1] bg-[#F7F7F4] shadow-[0_20px_50px_rgba(31,31,29,0.12)] md:grid-cols-[1fr_340px]">
         <div className="p-6 md:p-8">
-          <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#8A6246]">No fire on the ticket yet</p>
-          <h2 className="mt-3 font-heading text-5xl leading-none tracking-normal text-[#4B2E1F]">CART IS EMPTY</h2>
-          <p className="mt-4 max-w-xl text-sm font-semibold leading-7 text-[#6A5647]">
+          <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#666A67]">No fire on the ticket yet</p>
+          <h2 className="mt-3 font-heading text-5xl leading-none tracking-normal text-[#30241F]">CART IS EMPTY</h2>
+          <p className="mt-4 max-w-xl text-sm font-semibold leading-7 text-[#555854]">
             Add smoked proteins, sides, and drinks from today&apos;s menu. Your pickup order will stay here until payment is confirmed.
           </p>
           <Link href="/" className="btn-primary mt-6 inline-flex rounded-md px-5 py-3 text-sm font-extrabold uppercase tracking-wide">
             Browse Menu
           </Link>
         </div>
-        <div className="bg-[#241A14] p-6 text-[#F8E6C8] md:p-8">
-          <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#E6B36B]">Pickup flow</p>
-          <div className="mt-5 space-y-4 text-sm font-semibold leading-6 text-[#D8C4AA]">
+        <div className="bg-[#2C2926] p-6 text-[#EEEEEA] md:p-8">
+          <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#A66B55]">Pickup flow</p>
+          <div className="mt-5 space-y-4 text-sm font-semibold leading-6 text-[#C9CBC7]">
             <p>1. Build your order from live stock.</p>
             <p>2. Pay with Pesapal.</p>
             <p>3. Show your pickup code when the kitchen marks it ready.</p>
@@ -43,23 +43,23 @@ export function CartView({ showCheckout = true }: { showCheckout?: boolean }) {
 
   return (
     <div className="mx-auto grid max-w-7xl gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
-      <section className="rounded-md border border-[#2B211B]/10 bg-[#FFF8EF] p-4 shadow-[0_20px_50px_rgba(42,33,26,0.1)] md:p-5">
-        <div className="flex flex-wrap items-end justify-between gap-3 border-b border-[#2B211B]/10 pb-4">
+      <section className="rounded-md border border-[#C3C5C1] bg-[#F7F7F4] p-4 shadow-[0_20px_50px_rgba(31,31,29,0.1)] md:p-5">
+        <div className="flex flex-wrap items-end justify-between gap-3 border-b border-[#C9CAC7] pb-4">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#8A6246]">Current ticket</p>
-            <h2 className="mt-1 text-2xl font-black uppercase tracking-wide text-[#2A211A]">Items on the fireline</h2>
+            <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#666A67]">Current ticket</p>
+            <h2 className="mt-1 text-2xl font-black uppercase tracking-wide text-[#242321]">Items on the fireline</h2>
           </div>
-          <p className="rounded bg-[#E9DDD0] px-3 py-1 text-sm font-extrabold text-[#4B2E1F]">{safeItems.length} line items</p>
+          <p className="rounded bg-[#E1E2DE] px-3 py-1 text-sm font-extrabold text-[#30241F]">{safeItems.length} line items</p>
         </div>
         <div className="mt-4 space-y-3">
         {safeItems.map((item) => (
-          <article key={item.menu_item_id} className="rounded-md border border-[#D7C2A7] bg-white p-3 shadow-[0_8px_20px_rgba(42,33,26,0.06)]">
+          <article key={item.menu_item_id} className="rounded-md border border-[#C9CAC7] bg-[#FCFCFA] p-3 shadow-[0_8px_20px_rgba(31,31,29,0.06)]">
             <div className="flex gap-4">
-              <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-md bg-[#241A14]">
+              <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-md bg-[#242321]">
                 {item.image_url ? (
                   <Image src={item.image_url} alt={item.name} fill className="object-cover" sizes="96px" />
                 ) : (
-                  <div className="flex h-full items-center justify-center text-xs font-bold uppercase tracking-wide text-[#F7C35F]">
+                  <div className="flex h-full items-center justify-center text-xs font-bold uppercase tracking-wide text-[#A66B55]">
                     Smoke
                   </div>
                 )}
@@ -68,37 +68,37 @@ export function CartView({ showCheckout = true }: { showCheckout?: boolean }) {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <h3 className="truncate text-lg font-black text-walnut">{item.name}</h3>
-                    <p className="mt-1 text-sm font-semibold text-[#6a5647]">{formatCurrency(item.price)} each</p>
+                    <p className="mt-1 text-sm font-semibold text-[#555854]">{formatCurrency(item.price)} each</p>
                   </div>
                   <button
                     type="button"
                     onClick={() => removeItem(item.menu_item_id)}
-                    className="rounded-md border border-transparent px-3 py-2 text-xs font-extrabold uppercase tracking-wide text-[#A23B22] transition hover:border-[#E6C8B2] hover:bg-[#FFF1E5]"
+                    className="rounded-md border border-transparent px-3 py-2 text-xs font-extrabold uppercase tracking-wide text-[#743626] transition hover:border-[#C9CAC7] hover:bg-[#ECECEA]"
                   >
                     Remove
                   </button>
                 </div>
                 <div className="mt-4 flex items-center justify-between gap-3">
-                  <div className="flex items-center overflow-hidden rounded-md border border-[#D6BEA4] bg-[#FFF7EC]">
+                  <div className="flex items-center overflow-hidden rounded-md border border-[#B8BAB6] bg-[#F2F2EF]">
                     <button
                       type="button"
                       onClick={() => updateQty(item.menu_item_id, item.qty - 1)}
-                      className="h-10 w-10 text-xl font-black text-[#5B3826] transition hover:bg-[#F4E9D9]"
+                      className="h-10 w-10 text-xl font-black text-[#30241F] transition hover:bg-[#DADBD7]"
                       aria-label={`Decrease ${item.name}`}
                     >
                       -
                     </button>
-                    <span className="w-10 text-center text-base font-extrabold text-[#2b211b]">{item.qty}</span>
+                    <span className="w-10 text-center text-base font-extrabold text-[#242321]">{item.qty}</span>
                     <button
                       type="button"
                       onClick={() => updateQty(item.menu_item_id, item.qty + 1)}
-                      className="h-10 w-10 text-xl font-black text-[#5b3826] transition hover:bg-[#f4e9d9]"
+                      className="h-10 w-10 text-xl font-black text-[#30241F] transition hover:bg-[#DADBD7]"
                       aria-label={`Increase ${item.name}`}
                     >
                       +
                     </button>
                   </div>
-                  <p className="text-lg font-black text-[#2b211b]">{formatCurrency(item.qty * item.price)}</p>
+                  <p className="text-lg font-black text-[#242321]">{formatCurrency(item.qty * item.price)}</p>
                 </div>
               </div>
             </div>
@@ -107,17 +107,17 @@ export function CartView({ showCheckout = true }: { showCheckout?: boolean }) {
         </div>
       </section>
 
-      <aside className="h-fit overflow-hidden rounded-md border border-[#2B211B]/10 bg-[#1C1410] text-[#FFF7EC] shadow-[0_20px_50px_rgba(42,33,26,0.16)] lg:sticky lg:top-24">
-        <div className="border-b border-[#F7C35F]/15 p-5">
-          <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#E6B36B]">Order summary</p>
-          <h2 className="mt-2 text-xl font-black uppercase tracking-wide text-[#F8E6C8]">Ready for checkout</h2>
+      <aside className="h-fit overflow-hidden rounded-md border border-[#C3C5C1] bg-[#F7F7F4] text-[#242321] shadow-[0_20px_50px_rgba(31,31,29,0.12)] lg:sticky lg:top-24">
+        <div className="border-b border-[#C9CAC7] p-5">
+          <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#666A67]">Order summary</p>
+          <h2 className="mt-2 text-xl font-black uppercase tracking-wide text-[#30241F]">Ready for checkout</h2>
         </div>
         <div className="p-5">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-bold uppercase tracking-wide text-[#D8C4AA]">Total</span>
-            <span className="text-3xl font-black text-[#F7C35F]">{formatCurrency(safeTotal)}</span>
+            <span className="text-sm font-bold uppercase tracking-wide text-[#555854]">Total</span>
+            <span className="text-3xl font-black text-[#30241F]">{formatCurrency(safeTotal)}</span>
           </div>
-          <div className="mt-5 space-y-3 border-t border-[#F7C35F]/15 pt-5 text-sm font-semibold leading-6 text-[#D8C4AA]">
+          <div className="mt-5 space-y-3 border-t border-[#C9CAC7] pt-5 text-sm font-semibold leading-6 text-[#555854]">
             <p>Payment reserves stock only after Pesapal confirms it.</p>
             <p>Pickup code appears after your order is saved.</p>
           </div>

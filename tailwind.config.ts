@@ -13,14 +13,14 @@ const config: Config = {
         heading: ["var(--font-heading)", "sans-serif"]
       },
       colors: {
-        cream: "#F4EFE6",
-        sand: "#F7F1E8",
-        walnut: "#4B2E1F",
-        ember: "#D9733A",
-        wood: "#8A6246"
+        cream: "#ECECEA",
+        sand: "#F5F5F2",
+        walnut: "#30241F",
+        ember: "#82432F",
+        wood: "#4D3327"
       },
       boxShadow: {
-        card: "0 10px 30px rgba(75, 46, 31, 0.08)"
+        card: "0 14px 34px rgba(31, 31, 29, 0.1)"
       }
     }
   },

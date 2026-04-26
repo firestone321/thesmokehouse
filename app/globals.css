@@ -3,11 +3,11 @@
 @tailwind utilities;
 
 :root {
-  --bg-cream: #f4efe6;
-  --bg-sand: #f7f1e8;
-  --walnut: #4b2e1f;
-  --ember: #d9733a;
-  --wood: #8a6246;
+  --bg-cream: #ececea;
+  --bg-sand: #f5f5f2;
+  --walnut: #30241f;
+  --ember: #82432f;
+  --wood: #4d3327;
   --font-body: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --font-heading: Impact, "Arial Narrow Bold", sans-serif;
 }
@@ -21,26 +21,39 @@ body {
   margin: 0;
   padding: 0;
   background: var(--bg-cream);
-  color: #2f2219;
+  color: #1f1f1d;
 }
 
 body {
   font-family: var(--font-body);
-  color: #1f1a17;
+  color: #20201e;
 }
 
 .header-wood-strip {
-  background: linear-gradient(90deg, #8a6246 0%, #a77a58 48%, #8a6246 100%);
+  background: linear-gradient(90deg, #2d2521 0%, #4d3327 48%, #1d1916 100%);
 }
 
 .btn-primary {
-  background: linear-gradient(180deg, #65412c 0%, #4b2e1f 100%);
-  color: #f4efe6;
-  box-shadow: 0 8px 18px rgba(75, 46, 31, 0.22);
+  background:
+    linear-gradient(90deg, rgba(130, 67, 47, 0.34) 0%, rgba(130, 67, 47, 0) 18%, rgba(130, 67, 47, 0) 82%, rgba(130, 67, 47, 0.26) 100%),
+    linear-gradient(135deg, rgba(238, 238, 232, 0.1) 0%, rgba(238, 238, 232, 0) 42%),
+    linear-gradient(180deg, #5a382b 0%, #35241d 52%, #1d1916 100%);
+  color: #eeeeea;
+  box-shadow:
+    inset 0 1px 0 rgba(238, 238, 232, 0.16),
+    inset 0 -10px 20px rgba(12, 11, 10, 0.18),
+    0 12px 24px rgba(27, 24, 22, 0.24);
 }
 
 .btn-primary:hover {
-  filter: brightness(1.08);
+  filter: brightness(1.03) saturate(0.95);
+}
+
+.btn-primary:disabled {
+  background: linear-gradient(180deg, #77726d 0%, #57514d 100%);
+  color: rgba(238, 238, 232, 0.72);
+  box-shadow: none;
+  filter: none;
 }
 
 .font-heading {
@@ -49,20 +62,20 @@ body {
 }
 
 .btn-ember {
-  background: #d9733a;
-  color: #fff8f2;
+  background: #82432f;
+  color: #eeeeea;
 }
 
 input,
 select,
 textarea {
-  border: 1px solid #ccb69f;
-  background: #fffdf8;
+  border: 1px solid #c9cac7;
+  background: #fafafa;
 }
 
 input:focus,
 select:focus,
 textarea:focus {
-  outline: 2px solid rgba(217, 115, 58, 0.35);
+  outline: 2px solid rgba(77, 51, 39, 0.28);
   outline-offset: 1px;
 }

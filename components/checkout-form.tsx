@@ -57,20 +57,20 @@ export function CheckoutForm() {
 
   return (
     <form onSubmit={onSubmit} className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-      <div className="space-y-4 rounded-2xl bg-white p-5 shadow-card">
-        <h2 className="text-xl font-bold text-walnut">Guest Checkout</h2>
+      <div className="space-y-4 rounded-2xl border border-[#C3C5C1] bg-[#F7F7F4] p-5 shadow-card">
+        <h2 className="text-xl font-bold text-[#30241F]">Guest Checkout</h2>
 
-        <label className="block text-sm font-semibold text-walnut">
+        <label className="block text-sm font-semibold text-[#30241F]">
           Name
           <input value={name} onChange={(e) => setName(e.target.value)} className="mt-1 w-full rounded-xl px-3 py-2" required />
         </label>
 
-        <label className="block text-sm font-semibold text-walnut">
+        <label className="block text-sm font-semibold text-[#30241F]">
           Phone
           <input value={phone} onChange={(e) => setPhone(e.target.value)} className="mt-1 w-full rounded-xl px-3 py-2" required />
         </label>
 
-        <label className="block text-sm font-semibold text-walnut">
+        <label className="block text-sm font-semibold text-[#30241F]">
           Pickup Time
           <select value={pickupTime} onChange={(e) => setPickupTime(e.target.value)} className="mt-1 w-full rounded-xl px-3 py-2">
             <option value="ASAP">ASAP</option>
@@ -80,7 +80,7 @@ export function CheckoutForm() {
           </select>
         </label>
 
-        <label className="block text-sm font-semibold text-walnut">
+        <label className="block text-sm font-semibold text-[#30241F]">
           Notes
           <textarea
             value={notes}
@@ -91,13 +91,13 @@ export function CheckoutForm() {
           />
         </label>
 
-        {error ? <p className="rounded-lg bg-red-100 px-3 py-2 text-sm text-red-700">{error}</p> : null}
+        {error ? <p className="rounded-lg bg-[#E5D8D4] px-3 py-2 text-sm font-semibold text-[#6A3025]">{error}</p> : null}
       </div>
 
-      <aside className="h-fit rounded-2xl bg-white p-5 shadow-card lg:sticky lg:top-6">
-        <h3 className="text-lg font-bold text-walnut">Order Summary</h3>
-        <p className="mt-1 text-sm text-stone-600">{safeItems.length} line items</p>
-        <ul className="mt-3 space-y-2 text-sm text-stone-700">
+      <aside className="h-fit rounded-2xl border border-[#C3C5C1] bg-[#F7F7F4] p-5 shadow-card lg:sticky lg:top-6">
+        <h3 className="text-lg font-bold text-[#30241F]">Order Summary</h3>
+        <p className="mt-1 text-sm text-[#666A67]">{safeItems.length} line items</p>
+        <ul className="mt-3 space-y-2 text-sm text-[#424440]">
           {safeItems.map((item) => (
             <li key={item.menu_item_id} className="flex justify-between gap-4">
               <span>
@@ -107,11 +107,11 @@ export function CheckoutForm() {
             </li>
           ))}
         </ul>
-        <div className="mt-4 flex items-center justify-between border-t border-[#e1d2c1] pt-3">
-          <span className="font-semibold text-walnut">Total</span>
-          <span className="text-xl font-bold text-walnut">{formatCurrency(safeTotal)}</span>
+        <div className="mt-4 flex items-center justify-between border-t border-[#C9CAC7] pt-3">
+          <span className="font-semibold text-[#30241F]">Total</span>
+          <span className="text-xl font-bold text-[#30241F]">{formatCurrency(safeTotal)}</span>
         </div>
-        <button type="submit" disabled={disabled} className="btn-primary mt-4 w-full rounded-xl px-4 py-3 text-sm font-semibold disabled:opacity-60">
+        <button type="submit" disabled={disabled} className="btn-primary mt-4 w-full rounded-xl px-4 py-3 text-sm font-semibold">
           {submitting ? "Preparing Payment..." : "Pay with Pesapal"}
         </button>
       </aside>
