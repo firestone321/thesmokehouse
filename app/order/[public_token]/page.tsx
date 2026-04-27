@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { EnableOrderNotifications } from "@/components/enable-order-notifications";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { getOrderByPublicToken } from "@/lib/api";
@@ -241,6 +242,7 @@ export default function OrderTrackingPage() {
                   {getUnpaidAsideMessage(order)}
                 </div>
               ) : null}
+              {order.payment_status === "paid" ? <EnableOrderNotifications orderId={order.id} /> : null}
               <div className="mt-5 grid gap-3 border-t border-[#2B211B]/10 pt-5">
                 <Link href="/" className="btn-primary block rounded-md px-4 py-3 text-center text-sm font-extrabold uppercase tracking-wide">
                   Order Again

@@ -129,3 +129,64 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(staleWhileRevalidate(RUNTIME_CACHE_NAME, request));
   }
 });
+
+self.addEventListener("push", (event) => {
+  let payload = {
+    title: "Order Ready",
+    body: "Your Smokehouse order is ready for pickup.",
+    url: "/",
+    icon: "/icons/icon-192.png",
+    badge: "/icons/icon-192.png",
+    tag: "order-ready"
+  };
+
+  if (event.data) {
+    try {
+      payload = {
+        ...payload,
+        ...event.data.json()
+      };
+    } catch {
+      payload.body = event.data.text() || payload.body;
+    }
+  }
+
+  const title = typeof payload.title === "string" ? payload.title : "Order Ready";
+  const options = {
+    body: typeof payload.body === "string" ? payload.body : "Your Smokehouse order is ready for pickup.",
+    icon: typeof payload.icon === "string" ? payload.icon : "/icons/icon-192.png",
+    badge: typeof payload.badge === "string" ? payload.badge : "/icons/icon-192.png",
+    tag: typeof payload.tag === "string" ? payload.tag : "order-ready",
+    data: {
+      ...(payload.data && typeof payload.data === "object" ? payload.data : {}),
+      url: typeof payload.url === "string" ? payload.url : "/"
+    }
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+
+  const notificationUrl = event.notification.data && typeof event.notification.data.url === "string"
+    ? event.notification.data.url
+    : "/";
+  const targetUrl = new URL(notificationUrl, self.location.origin).href;
+
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if (client.url === targetUrl && "focus" in client) {
+          return client.focus();
+        }
+      }
+
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(targetUrl);
+      }
+
+      return undefined;
+    })
+  );
+});

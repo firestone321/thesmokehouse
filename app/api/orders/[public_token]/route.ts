@@ -1,4 +1,6 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
+import { setOrderAccessCookie } from "@/lib/order-access";
+import { scheduleDueOrderReadyPushProcessing } from "@/lib/push/order-ready";
 import { mapSharedOrder } from "@/lib/shared-schema";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
@@ -54,6 +56,16 @@ export async function GET(_req: Request, { params }: Params) {
   }
 
   const order = data as unknown as CustomerOrderRow;
+  await setOrderAccessCookie({
+    orderId: order.id,
+    publicToken: public_token
+  });
+
+  if (order.payment_status === "paid") {
+    after(async () => {
+      await scheduleDueOrderReadyPushProcessing("order_tracking");
+    });
+  }
 
   return NextResponse.json(mapSharedOrder(order));
 }

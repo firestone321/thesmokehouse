@@ -163,6 +163,7 @@ export function PaymentResultView() {
   const currentState = order?.viewState ?? (hint === "cancelled" ? "cancelled" : "pending");
   const styles = stateStyles[currentState];
   const itemCount = order?.items.reduce((sum, item) => sum + item.quantity, 0) ?? 0;
+  const showPickupSignal = !isLoading && !error && order?.viewState === "success";
 
   useEffect(() => {
     if (order?.viewState !== "success" || hasClearedCartRef.current) {
@@ -197,13 +198,15 @@ export function PaymentResultView() {
               {isLoading ? "Verifying your payment with Pesapal and the Smokehouse kitchen..." : error ?? message}
             </p>
           </div>
-          <div className="rounded-md border border-[#F7C35F]/15 bg-[#2A211A] p-5">
-            <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#E6B36B]">Pickup signal</p>
-            <p className="mt-3 text-4xl font-black text-[#F7C35F]">{order?.pickupCode ?? "----"}</p>
-            <p className="mt-2 text-sm font-semibold leading-6 text-[#D8C4AA]">
-              Show this code when your order reaches ready. Pending payments keep stock untouched.
-            </p>
-          </div>
+          {showPickupSignal ? (
+            <div className="rounded-md border border-[#F7C35F]/15 bg-[#2A211A] p-5">
+              <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#E6B36B]">Pickup code</p>
+              <p className="mt-3 text-4xl font-black text-[#F7C35F]">{order.pickupCode ?? "----"}</p>
+              <p className="mt-2 text-sm font-semibold leading-6 text-[#D8C4AA]">
+                Show this code when you arrive to pick up your order.
+              </p>
+            </div>
+          ) : null}
         </div>
       </section>
 
