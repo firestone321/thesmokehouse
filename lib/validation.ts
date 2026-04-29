@@ -12,7 +12,7 @@ export const createOrderSchema = z.object({
     )
     .min(1)
     .max(50),
-  pickup_time: z.enum(["ASAP", "30", "45", "60"]),
+  pickup_time: z.enum(["15", "30", "45", "60"]),
   name: z.string().trim().min(2).max(80),
   phone: z
     .string()

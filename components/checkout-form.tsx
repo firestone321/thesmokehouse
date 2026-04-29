@@ -4,6 +4,7 @@ import { FormEvent, useMemo, useState } from "react";
 import { useCartStore } from "@/lib/store";
 import { createOrder } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
+import { rememberGuestOrder } from "@/lib/guest-order";
 import { useCartHydration } from "@/lib/use-cart-hydration";
 
 export function CheckoutForm() {
@@ -13,7 +14,7 @@ export function CheckoutForm() {
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [pickupTime, setPickupTime] = useState("ASAP");
+  const [pickupTime, setPickupTime] = useState("15");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,6 +42,8 @@ export function CheckoutForm() {
         phone: phone.trim(),
         notes: notes.trim()
       });
+
+      rememberGuestOrder(result.public_token);
 
       if (result.redirect_url) {
         window.location.assign(result.redirect_url);
@@ -73,7 +76,7 @@ export function CheckoutForm() {
         <label className="block text-sm font-semibold text-[#30241F]">
           Pickup Time
           <select value={pickupTime} onChange={(e) => setPickupTime(e.target.value)} className="mt-1 w-full rounded-xl px-3 py-2">
-            <option value="ASAP">ASAP</option>
+            <option value="15">15 min</option>
             <option value="30">30 min</option>
             <option value="45">45 min</option>
             <option value="60">60 min</option>

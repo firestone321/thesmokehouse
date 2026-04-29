@@ -10,7 +10,7 @@ import { useCartHydration } from "@/lib/use-cart-hydration";
 
 export function MenuClient({ items }: { items: MenuItem[] }) {
   const [active, setActive] = useState<string>("");
-  const [pickupTime, setPickupTime] = useState("ASAP");
+  const [pickupTime, setPickupTime] = useState("15");
 
   const cartItems = useCartStore((s) => s.items);
   const addItem = useCartStore((s) => s.addItem);
@@ -201,7 +201,7 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
             <label className="mt-3 block text-xs font-bold uppercase tracking-wide text-[#6a5647]">
               Pickup Time
               <select value={pickupTime} onChange={(e) => setPickupTime(e.target.value)} className="mt-1 w-full rounded-md px-3 py-2 text-sm font-semibold">
-                <option value="ASAP">ASAP</option>
+                <option value="15">15 min</option>
                 <option value="30">30 min</option>
                 <option value="45">45 min</option>
                 <option value="60">60 min</option>

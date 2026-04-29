@@ -71,10 +71,6 @@ export function mapPrepTypeToMenuCategory(prepType: string | null | undefined, c
 }
 
 export function pickupSelectionToPromisedAt(pickupTime: string, now: Date = new Date()): string | null {
-  if (pickupTime === "ASAP") {
-    return null;
-  }
-
   const minutes = Number(pickupTime);
   if (!Number.isFinite(minutes) || minutes <= 0) {
     return null;
@@ -85,12 +81,12 @@ export function pickupSelectionToPromisedAt(pickupTime: string, now: Date = new 
 
 export function promisedAtToPickupLabel(promisedAt: string | null | undefined): string {
   if (!promisedAt) {
-    return "ASAP";
+    return "15 min";
   }
 
   const date = new Date(promisedAt);
   if (Number.isNaN(date.getTime())) {
-    return "ASAP";
+    return "15 min";
   }
 
   return new Intl.DateTimeFormat("en-UG", {
@@ -148,6 +144,8 @@ export function mapSharedOrder(row: {
   notes: string | null;
   total_amount: unknown;
   created_at: string;
+  completed_at?: string | null;
+  cancelled_at?: string | null;
   order_items?: Array<{
     id: unknown;
     menu_item_id: unknown;
@@ -186,6 +184,8 @@ export function mapSharedOrder(row: {
     notes: row.notes,
     total_amount: toNumber(row.total_amount),
     created_at: row.created_at,
+    completed_at: row.completed_at ?? null,
+    cancelled_at: row.cancelled_at ?? null,
     items
   };
 }

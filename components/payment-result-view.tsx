@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useCartStore } from "@/lib/store";
 import { formatCurrency, formatPaymentStatus, formatStatus } from "@/lib/format";
+import { rememberGuestOrder } from "@/lib/guest-order";
 
 type PaymentResultOrder = {
   publicToken: string;
@@ -173,6 +174,12 @@ export function PaymentResultView() {
     clearCart();
     hasClearedCartRef.current = true;
   }, [clearCart, order?.viewState]);
+
+  useEffect(() => {
+    if (order?.publicToken) {
+      rememberGuestOrder(order.publicToken);
+    }
+  }, [order?.publicToken]);
 
   useEffect(() => {
     if (!token || isLoading || error || order?.viewState !== "pending" || pollAttempts >= MAX_POLL_ATTEMPTS) {

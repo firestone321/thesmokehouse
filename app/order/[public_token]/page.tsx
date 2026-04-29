@@ -7,10 +7,15 @@ import { EnableOrderNotifications } from "@/components/enable-order-notification
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { getOrderByPublicToken } from "@/lib/api";
+import { syncGuestOrderFromServer } from "@/lib/guest-order";
 import { Order } from "@/lib/types";
 import { formatCurrency, formatPaymentStatus, formatStatus } from "@/lib/format";
 
 function getOrderHeading(order: Order) {
+  if (order.status === "completed") {
+    return "Order Complete";
+  }
+
   if (order.payment_status === "paid") {
     return "Order Confirmed";
   }
@@ -27,6 +32,10 @@ function getOrderHeading(order: Order) {
 }
 
 function getOrderMessage(order: Order) {
+  if (order.status === "completed") {
+    return "This pickup is complete. We will keep this receipt on this device for 24 hours.";
+  }
+
   if (order.payment_status === "paid") {
     return "Your payment is confirmed and the kitchen can move this order through prep to pickup.";
   }
@@ -52,6 +61,10 @@ function getUnpaidAsideMessage(order: Order) {
   }
 
   return "Stock stays untouched until Pesapal confirms payment.";
+}
+
+function shouldShowPickupCode(order: Order) {
+  return order.payment_status === "paid" && order.status !== "completed" && order.status !== "cancelled";
 }
 
 const paymentStyles = {
@@ -93,6 +106,7 @@ export default function OrderTrackingPage() {
       try {
         const data = await getOrderByPublicToken(params.public_token);
         if (active) {
+          syncGuestOrderFromServer(data);
           setOrder(data);
           setError(null);
         }
@@ -147,6 +161,11 @@ export default function OrderTrackingPage() {
 
   const styles = paymentStyles[order.payment_status];
   const itemCount = order.items?.reduce((sum, item) => sum + item.quantity, 0) ?? 0;
+  const showPickupCode = shouldShowPickupCode(order);
+  const heroMessage =
+    order.status === "completed"
+      ? "This order has been picked up. Receipt access stays on this device for 24 hours."
+      : "Track this pickup ticket live. We refresh the kitchen state every few seconds.";
 
   return (
     <div className="min-h-screen bg-[#F4EFE6]">
@@ -160,16 +179,30 @@ export default function OrderTrackingPage() {
                 {getOrderHeading(order)}
               </h1>
               <p className="mt-4 max-w-2xl text-base font-semibold leading-7 text-[#D8C4AA]">
-                Track this pickup ticket live. We refresh the kitchen state every few seconds.
+                {heroMessage}
               </p>
             </div>
-            <div className="rounded-md border border-[#F7C35F]/15 bg-[#2A211A] p-5">
-              <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#E6B36B]">Pickup code</p>
-              <p className="mt-3 text-4xl font-black text-[#F7C35F]">{order.pickup_code ?? "----"}</p>
-              <p className="mt-2 text-sm font-semibold leading-6 text-[#D8C4AA]">
-                Show this code when staff mark your order ready.
-              </p>
-            </div>
+            {showPickupCode ? (
+              <div className="rounded-md border border-[#F7C35F]/15 bg-[#2A211A] p-5">
+                <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#E6B36B]">Pickup code</p>
+                <p className="mt-3 text-4xl font-black text-[#F7C35F]">{order.pickup_code ?? "----"}</p>
+                <p className="mt-2 text-sm font-semibold leading-6 text-[#D8C4AA]">
+                  Show this code when you arrive to pick up your order.
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-md border border-[#F7C35F]/15 bg-[#2A211A] p-5">
+                <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#E6B36B]">
+                  {order.status === "completed" ? "Receipt" : "Order status"}
+                </p>
+                <p className="mt-3 text-3xl font-black text-[#F7C35F]">{formatStatus(order.status)}</p>
+                <p className="mt-2 text-sm font-semibold leading-6 text-[#D8C4AA]">
+                  {order.status === "completed"
+                    ? "Pickup is complete. This device can reopen the receipt for 24 hours."
+                    : "Pickup instructions appear after payment is confirmed."}
+                </p>
+              </div>
+            )}
           </div>
         </section>
 
@@ -242,7 +275,7 @@ export default function OrderTrackingPage() {
                   {getUnpaidAsideMessage(order)}
                 </div>
               ) : null}
-              {order.payment_status === "paid" ? <EnableOrderNotifications orderId={order.id} /> : null}
+              {order.payment_status === "paid" && order.status !== "completed" ? <EnableOrderNotifications orderId={order.id} /> : null}
               <div className="mt-5 grid gap-3 border-t border-[#2B211B]/10 pt-5">
                 <Link href="/" className="btn-primary block rounded-md px-4 py-3 text-center text-sm font-extrabold uppercase tracking-wide">
                   Order Again
