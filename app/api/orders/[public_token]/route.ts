@@ -1,5 +1,6 @@
 import { after, NextResponse } from "next/server";
 import { setOrderAccessCookie } from "@/lib/order-access";
+import { scheduleDuePendingPaymentRecovery } from "@/lib/payments/order-payments";
 import { scheduleDueOrderReadyPushProcessing } from "@/lib/push/order-ready";
 import { mapSharedOrder } from "@/lib/shared-schema";
 import { getSupabaseAdmin } from "@/lib/supabase";
@@ -68,6 +69,10 @@ export async function GET(_req: Request, { params }: Params) {
       await scheduleDueOrderReadyPushProcessing("order_tracking");
     });
   }
+
+  after(async () => {
+    await scheduleDuePendingPaymentRecovery("order_tracking");
+  });
 
   return NextResponse.json(mapSharedOrder(order));
 }

@@ -1,5 +1,9 @@
-import { NextResponse } from "next/server";
-import { markOrderPaymentCancelled, syncPesapalPaymentForOrder } from "@/lib/payments/order-payments";
+import { after, NextResponse } from "next/server";
+import {
+  markOrderPaymentCancelled,
+  scheduleDuePendingPaymentRecovery,
+  syncPesapalPaymentForOrder
+} from "@/lib/payments/order-payments";
 import { resolveSiteOrigin } from "@/lib/site-url";
 
 export async function GET(request: Request) {
@@ -36,6 +40,10 @@ export async function GET(request: Request) {
   if (cancelled) {
     resultUrl.searchParams.set("hint", "cancelled");
   }
+
+  after(async () => {
+    await scheduleDuePendingPaymentRecovery("pesapal_callback");
+  });
 
   return NextResponse.redirect(resultUrl);
 }

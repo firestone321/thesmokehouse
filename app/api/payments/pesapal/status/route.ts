@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
-import { getOrderPaymentSnapshot } from "@/lib/payments/order-payments";
+import { after, NextResponse } from "next/server";
+import { getOrderPaymentSnapshot, scheduleDuePendingPaymentRecovery } from "@/lib/payments/order-payments";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -15,6 +15,10 @@ export async function GET(request: Request) {
     const order = await getOrderPaymentSnapshot(token, {
       refresh,
       hint
+    });
+
+    after(async () => {
+      await scheduleDuePendingPaymentRecovery("payment_status");
     });
 
     return NextResponse.json({ ok: true, order });

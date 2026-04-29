@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
-import { syncPesapalPaymentForOrder } from "@/lib/payments/order-payments";
+import { after, NextResponse } from "next/server";
+import { scheduleDuePendingPaymentRecovery, syncPesapalPaymentForOrder } from "@/lib/payments/order-payments";
 
 type PesapalNotificationPayload = {
   OrderNotificationType?: string | null;
@@ -76,6 +76,10 @@ async function handleNotification(request: Request) {
     });
     return NextResponse.json({ message: "Unable to verify payment." }, { status: 500 });
   }
+
+  after(async () => {
+    await scheduleDuePendingPaymentRecovery("pesapal_ipn");
+  });
 
   return new NextResponse(buildAck(payload), {
     status: 200,
