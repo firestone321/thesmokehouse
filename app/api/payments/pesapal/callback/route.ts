@@ -4,9 +4,18 @@ import {
   scheduleDuePendingPaymentRecovery,
   syncPesapalPaymentForOrder
 } from "@/lib/payments/order-payments";
+import { enforceRateLimit } from "@/lib/rate-limit";
 import { resolveSiteOrigin } from "@/lib/site-url";
 
 export async function GET(request: Request) {
+  const rateLimit = await enforceRateLimit(request, "payment-callback", 30, 60_000);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { message: "Too many requests. Please wait and try again." },
+      { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
+    );
+  }
+
   const requestUrl = new URL(request.url);
   const token =
     requestUrl.searchParams.get("token")?.trim() ||

@@ -2,6 +2,8 @@ import { after, NextResponse } from "next/server";
 import { z } from "zod";
 import { hasOrderAccess } from "@/lib/order-access";
 import { scheduleDueOrderReadyPushProcessing } from "@/lib/push/order-ready";
+import { enforceRateLimit } from "@/lib/rate-limit";
+import { isContentLengthTooLarge } from "@/lib/request-limits";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 const pushSubscriptionSchema = z.object({
@@ -14,15 +16,6 @@ const pushSubscriptionSchema = z.object({
   })
 });
 
-type RateEntry = {
-  count: number;
-  firstSeen: number;
-};
-
-const RATE_WINDOW_MS = 60_000;
-const RATE_LIMIT = 12;
-const rateMap = new Map<string, RateEntry>();
-
 function inferPlatform(userAgent: string | null) {
   const value = userAgent?.toLowerCase() ?? "";
 
@@ -33,24 +26,6 @@ function inferPlatform(userAgent: string | null) {
   if (value.includes("linux")) return "linux";
 
   return "web";
-}
-
-function getClientIp(request: Request) {
-  return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-}
-
-function isRateLimited(key: string) {
-  const now = Date.now();
-  const existing = rateMap.get(key);
-
-  if (!existing || now - existing.firstSeen > RATE_WINDOW_MS) {
-    rateMap.set(key, { count: 1, firstSeen: now });
-    return false;
-  }
-
-  existing.count += 1;
-  rateMap.set(key, existing);
-  return existing.count > RATE_LIMIT;
 }
 
 function validateSameOriginMutation(request: Request) {
@@ -71,11 +46,15 @@ export async function POST(request: Request) {
     return originViolation;
   }
 
-  const rateKey = `${getClientIp(request)}:push-subscribe`;
-  if (isRateLimited(rateKey)) {
+  if (isContentLengthTooLarge(request, 16 * 1024)) {
+    return NextResponse.json({ message: "Push subscription payload is too large." }, { status: 413 });
+  }
+
+  const routeRateLimit = await enforceRateLimit(request, "push-subscribe", 12, 60_000);
+  if (!routeRateLimit.allowed) {
     return NextResponse.json(
       { message: "Too many requests. Please wait and try again." },
-      { status: 429, headers: { "Retry-After": "60" } }
+      { status: 429, headers: { "Retry-After": String(routeRateLimit.retryAfterSeconds) } }
     );
   }
 
@@ -89,6 +68,16 @@ export async function POST(request: Request) {
         issues: parsed.error.flatten()
       },
       { status: 400 }
+    );
+  }
+
+  const orderRateLimit = await enforceRateLimit(request, "push-subscribe-order", 6, 60_000, {
+    bucketSuffix: String(parsed.data.orderId)
+  });
+  if (!orderRateLimit.allowed) {
+    return NextResponse.json(
+      { message: "Too many requests. Please wait and try again." },
+      { status: 429, headers: { "Retry-After": String(orderRateLimit.retryAfterSeconds) } }
     );
   }
 

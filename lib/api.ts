@@ -35,8 +35,17 @@ export async function createOrder(payload: CreateOrderPayload): Promise<{
   return res.json();
 }
 
-export async function getOrderByPublicToken(publicToken: string): Promise<Order> {
-  const res = await fetch(`/api/orders/${publicToken}`, { cache: "no-store" });
+export async function getOrderByPublicToken(
+  publicToken: string,
+  options?: { bootstrapAccess?: boolean }
+): Promise<Order> {
+  const params = new URLSearchParams();
+  if (options?.bootstrapAccess) {
+    params.set("bootstrap", "1");
+  }
+
+  const query = params.toString();
+  const res = await fetch(`/api/orders/${publicToken}${query ? `?${query}` : ""}`, { cache: "no-store" });
   if (!res.ok) throw new Error("Order not found");
   return res.json();
 }

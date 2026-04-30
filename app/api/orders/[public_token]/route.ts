@@ -1,5 +1,5 @@
 import { after, NextResponse } from "next/server";
-import { setOrderAccessCookie } from "@/lib/order-access";
+import { hasOrderAccess, setOrderAccessCookie } from "@/lib/order-access";
 import { scheduleDuePendingPaymentRecovery } from "@/lib/payments/order-payments";
 import { scheduleDueOrderReadyPushProcessing } from "@/lib/push/order-ready";
 import { mapSharedOrder } from "@/lib/shared-schema";
@@ -36,19 +36,57 @@ interface CustomerOrderRow {
   }>;
 }
 
-export async function GET(_req: Request, { params }: Params) {
+export async function GET(req: Request, { params }: Params) {
   const { public_token } = await params;
+  const bootstrapAccess = new URL(req.url).searchParams.get("bootstrap") === "1";
+
+  const { data: accessData, error: accessError } = await getSupabaseAdmin()
+    .from("orders")
+    .select("id,public_token")
+    .eq("public_token", public_token)
+    .maybeSingle();
+
+  if (accessError || !accessData) {
+    if (accessError?.message?.includes("public_token")) {
+      return NextResponse.json(
+        { error: "Storefront order support is not fully applied in Supabase yet. Run Phase 10 and try again." },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ error: "Order not found" }, { status: 404 });
+  }
+
+  const accessOrder = accessData as { id: number; public_token: string | null };
+  const hasAccess = await hasOrderAccess({
+    orderId: accessOrder.id,
+    publicToken: accessOrder.public_token
+  });
+
+  if (!hasAccess && !bootstrapAccess) {
+    console.warn("order_detail_missing_access_session", {
+      orderId: accessOrder.id
+    });
+    return NextResponse.json({ error: "Missing valid order access session." }, { status: 403 });
+  }
+
+  if (!hasAccess) {
+    await setOrderAccessCookie({
+      orderId: accessOrder.id,
+      publicToken: public_token
+    });
+  }
 
   const { data, error } = await getSupabaseAdmin()
     .from("orders")
     .select(
       "id,order_number,public_token,pickup_code,customer_name,customer_phone,status,payment_status,promised_at,notes,total_amount,created_at,completed_at,cancelled_at,order_items(id,menu_item_id,menu_item_name,quantity,unit_price,menu_items(name,image_url))"
     )
-    .eq("public_token", public_token)
+    .eq("id", accessOrder.id)
     .single();
 
   if (error || !data) {
-    if (error?.message?.includes("public_token") || error?.message?.includes("pickup_code")) {
+    if (error?.message?.includes("pickup_code")) {
       return NextResponse.json(
         { error: "Storefront order support is not fully applied in Supabase yet. Run Phase 10 and try again." },
         { status: 500 }
@@ -59,10 +97,6 @@ export async function GET(_req: Request, { params }: Params) {
   }
 
   const order = data as unknown as CustomerOrderRow;
-  await setOrderAccessCookie({
-    orderId: order.id,
-    publicToken: public_token
-  });
 
   if (order.payment_status === "paid") {
     after(async () => {

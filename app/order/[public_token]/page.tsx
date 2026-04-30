@@ -101,10 +101,14 @@ export default function OrderTrackingPage() {
 
   useEffect(() => {
     let active = true;
+    let hasBootstrappedAccess = false;
 
     async function load() {
       try {
-        const data = await getOrderByPublicToken(params.public_token);
+        const data = await getOrderByPublicToken(params.public_token, {
+          bootstrapAccess: !hasBootstrappedAccess
+        });
+        hasBootstrappedAccess = true;
         if (active) {
           syncGuestOrderFromServer(data);
           setOrder(data);

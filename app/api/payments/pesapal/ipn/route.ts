@@ -1,5 +1,7 @@
 import { after, NextResponse } from "next/server";
 import { scheduleDuePendingPaymentRecovery, syncPesapalPaymentForOrder } from "@/lib/payments/order-payments";
+import { enforceRateLimit } from "@/lib/rate-limit";
+import { isContentLengthTooLarge } from "@/lib/request-limits";
 
 type PesapalNotificationPayload = {
   OrderNotificationType?: string | null;
@@ -55,6 +57,18 @@ async function parseNotificationPayload(request: Request): Promise<PesapalNotifi
 }
 
 async function handleNotification(request: Request) {
+  if (request.method === "POST" && isContentLengthTooLarge(request, 16 * 1024)) {
+    return NextResponse.json({ message: "Notification payload is too large." }, { status: 413 });
+  }
+
+  const rateLimit = await enforceRateLimit(request, "payment-ipn", 60, 60_000);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { message: "Too many requests. Please wait and try again." },
+      { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
+    );
+  }
+
   const payload = await parseNotificationPayload(request);
   const token = payload.OrderMerchantReference?.trim();
   const orderTrackingId = payload.OrderTrackingId?.trim();

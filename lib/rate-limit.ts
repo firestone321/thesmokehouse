@@ -1,53 +1,86 @@
+import "server-only";
+
 import crypto from "crypto";
+import { getSupabaseAdmin } from "@/lib/supabase";
 
-interface RateEntry {
-  count: number;
-  firstSeen: number;
+export type RateLimitResult = {
+  allowed: boolean;
+  remaining: number;
+  retryAfterSeconds: number;
+};
+
+type EnforceRateLimitOptions = {
+  bucketSuffix?: string | null;
+};
+
+function hasKnownProxyMarker(request: Request) {
+  return Boolean(request.headers.get("cf-ray") || request.headers.get("fly-region") || request.headers.get("x-vercel-id"));
 }
 
-const WINDOW_MS = 10 * 60 * 1000;
-const MAX_PER_IP = 8;
-const MAX_PER_PHONE = 4;
-
-const ipMap = new Map<string, RateEntry>();
-const phoneMap = new Map<string, RateEntry>();
-
-function updateAndCheck(map: Map<string, RateEntry>, key: string, max: number): boolean {
-  const now = Date.now();
-  const existing = map.get(key);
-
-  if (!existing || now - existing.firstSeen > WINDOW_MS) {
-    map.set(key, { count: 1, firstSeen: now });
-    return true;
-  }
-
-  existing.count += 1;
-  map.set(key, existing);
-
-  return existing.count <= max;
-}
-
-function sweepOldEntries(map: Map<string, RateEntry>): void {
-  const now = Date.now();
-  for (const [key, value] of map.entries()) {
-    if (now - value.firstSeen > WINDOW_MS) {
-      map.delete(key);
+function getClientIp(request: Request): string {
+  for (const header of ["cf-connecting-ip", "fly-client-ip"]) {
+    const value = request.headers.get(header);
+    if (value) {
+      return value.trim();
     }
   }
+
+  const allowGenericForwardingHeaders = process.env.NODE_ENV !== "production" || hasKnownProxyMarker(request);
+  if (allowGenericForwardingHeaders) {
+    const realIp = request.headers.get("x-real-ip")?.trim();
+    if (realIp) {
+      return realIp;
+    }
+
+    const forwardedFor = request.headers.get("x-forwarded-for");
+    if (forwardedFor) {
+      return forwardedFor.split(",")[0]?.trim() || "unknown";
+    }
+  }
+
+  return "unknown";
 }
 
-export function allowOrder(ip: string, phone: string): { ok: boolean; reason?: string } {
-  sweepOldEntries(ipMap);
-  sweepOldEntries(phoneMap);
+function buildRateLimitKey(request: Request, key: string, options?: EnforceRateLimitOptions) {
+  const clientIp = getClientIp(request);
+  const userAgent = request.headers.get("user-agent")?.trim() || "unknown";
+  const fingerprint = crypto.createHash("sha256").update(`${clientIp}|${userAgent}`).digest("hex");
+  const normalizedBucketSuffix = options?.bucketSuffix?.trim();
 
-  if (!updateAndCheck(ipMap, ip, MAX_PER_IP)) {
-    return { ok: false, reason: "Too many orders from this IP. Please try again later." };
+  if (!normalizedBucketSuffix) {
+    return `${key}:${fingerprint}`;
   }
 
-  const phoneHash = crypto.createHash("sha256").update(phone).digest("hex");
-  if (!updateAndCheck(phoneMap, phoneHash, MAX_PER_PHONE)) {
-    return { ok: false, reason: "Too many orders for this phone number. Please wait before retrying." };
+  const suffixFingerprint = crypto.createHash("sha256").update(`${fingerprint}|${normalizedBucketSuffix}`).digest("hex");
+  return `${key}:${suffixFingerprint}`;
+}
+
+export async function enforceRateLimit(
+  request: Request,
+  key: string,
+  limit: number,
+  windowMs: number,
+  options?: EnforceRateLimitOptions
+): Promise<RateLimitResult> {
+  const bucketKey = buildRateLimitKey(request, key, options);
+  const { data, error } = await getSupabaseAdmin().rpc("consume_rate_limit", {
+    rate_key: bucketKey,
+    max_requests: limit,
+    window_seconds: Math.ceil(windowMs / 1000)
+  });
+
+  if (error) {
+    throw new Error(`Rate limit check failed: ${error.message}`);
   }
 
-  return { ok: true };
+  const result = Array.isArray(data) ? data[0] : data;
+  if (!result || typeof result !== "object") {
+    throw new Error("Rate limit check returned no result.");
+  }
+
+  return {
+    allowed: Boolean(result.allowed),
+    remaining: Number(result.remaining ?? 0),
+    retryAfterSeconds: Number(result.retry_after_seconds ?? 1)
+  };
 }

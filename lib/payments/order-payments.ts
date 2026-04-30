@@ -47,7 +47,6 @@ type PaymentAttemptRow = {
 };
 
 const PENDING_PAYMENT_RECOVERY_SOFT_CANCEL_MS = 7 * 60_000;
-const UNTRACKED_PENDING_PAYMENT_CANCEL_MS = 15 * 60_000;
 const PENDING_PAYMENT_RECOVERY_LOOKBACK_MS = 2 * 60 * 60_000;
 const PENDING_PAYMENT_RECOVERY_VERIFY_THROTTLE_MS = 5 * 60_000;
 const PENDING_PAYMENT_RECOVERY_SCAN_LIMIT = 12;
@@ -62,8 +61,6 @@ export type PendingPaymentRecoveryStats = {
   trackedScanned: number;
   trackedVerified: number;
   trackedCancelled: number;
-  untrackedScanned: number;
-  untrackedCancelled: number;
   errors: string[];
 };
 
@@ -428,6 +425,11 @@ export async function cancelRejectedOrderPaymentInitiation(input: {
       payment_initiation_failed_at: new Date().toISOString()
     })
     .eq("id", row.id)
+    .eq("status", "new")
+    .is("order_tracking_id", null)
+    .is("payment_redirect_url", null)
+    .is("stock_reserved_at", null)
+    .not("payment_status", "in", "(paid,completed,cancelled,canceled)")
     .select(
       `
       id,
@@ -462,10 +464,14 @@ export async function cancelRejectedOrderPaymentInitiation(input: {
       )
     `
     )
-    .single();
+    .maybeSingle();
 
-  if (error || !data) {
-    throw new Error(`Unable to cancel rejected payment initiation: ${error?.message ?? "Unknown error"}`);
+  if (error) {
+    throw new Error(`Unable to cancel rejected payment initiation: ${error.message}`);
+  }
+
+  if (!data) {
+    return null;
   }
 
   return buildSnapshot(data as OrderPaymentRow, { hint: "cancelled" });
@@ -651,60 +657,6 @@ async function listRecentTrackedPendingOrdersForRecovery(nowMs: number) {
   return (data as OrderPaymentRow[] | null) ?? [];
 }
 
-async function listExpiredUntrackedPendingOrders(nowMs: number) {
-  const createdBefore = new Date(nowMs - UNTRACKED_PENDING_PAYMENT_CANCEL_MS).toISOString();
-  const { data, error } = await getSupabaseAdmin()
-    .from("orders")
-    .select(
-      `
-      id,
-      order_number,
-      public_token,
-      created_at,
-      updated_at,
-      pickup_code,
-      customer_name,
-      customer_phone,
-      status,
-      payment_status,
-      total_amount,
-      promised_at,
-      payment_provider,
-      payment_reference,
-      payment_redirect_url,
-      order_tracking_id,
-      payment_last_verified_at,
-      paid_at,
-      payment_initiation_failure_code,
-      payment_initiation_failure_message,
-      payment_initiation_failed_at,
-      active_payment_attempt_id,
-      stock_reserved_at,
-      order_items (
-        id,
-        menu_item_id,
-        menu_item_name,
-        quantity,
-        unit_price
-      )
-    `
-    )
-    .eq("status", "new")
-    .eq("payment_status", "pending")
-    .is("order_tracking_id", null)
-    .is("payment_redirect_url", null)
-    .is("stock_reserved_at", null)
-    .lt("created_at", createdBefore)
-    .order("created_at", { ascending: true })
-    .limit(PENDING_PAYMENT_RECOVERY_SCAN_LIMIT);
-
-  if (error) {
-    throw new Error(`Unable to list stale untracked pending payments: ${error.message}`);
-  }
-
-  return (data as OrderPaymentRow[] | null) ?? [];
-}
-
 async function cancelExpiredPendingPayment(row: OrderPaymentRow, reasonMessage: string) {
   await updateActivePaymentAttempt(row, {
     lifecycleStatus: "failed",
@@ -741,8 +693,6 @@ export async function reconcileDuePendingPayments(trigger: string): Promise<Pend
     trackedScanned: 0,
     trackedVerified: 0,
     trackedCancelled: 0,
-    untrackedScanned: 0,
-    untrackedCancelled: 0,
     errors: []
   };
 
@@ -783,26 +733,6 @@ export async function reconcileDuePendingPayments(trigger: string): Promise<Pend
     stats.errors.push(error instanceof Error ? error.message : "Unable to scan pending tracked payments.");
   }
 
-  try {
-    const untrackedRows = await listExpiredUntrackedPendingOrders(nowMs);
-    const dueUntrackedRows = untrackedRows.slice(0, PENDING_PAYMENT_RECOVERY_PROCESS_LIMIT);
-    stats.untrackedScanned = untrackedRows.length;
-
-    for (const row of dueUntrackedRows) {
-      try {
-        await cancelExpiredPendingPayment(
-          row,
-          "Payment was not initiated before the pending checkout window expired."
-        );
-        stats.untrackedCancelled += 1;
-      } catch (error) {
-        stats.errors.push(error instanceof Error ? error.message : "Unable to cancel stale untracked payment.");
-      }
-    }
-  } catch (error) {
-    stats.errors.push(error instanceof Error ? error.message : "Unable to scan stale untracked payments.");
-  }
-
   if (stats.errors.length > 0) {
     console.warn("pending_payment_recovery_completed_with_errors", stats);
   }
@@ -822,8 +752,6 @@ export function scheduleDuePendingPaymentRecovery(trigger: string) {
       trackedScanned: 0,
       trackedVerified: 0,
       trackedCancelled: 0,
-      untrackedScanned: 0,
-      untrackedCancelled: 0,
       errors: []
     });
   }

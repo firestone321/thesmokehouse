@@ -1,17 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loadSellableStockMaps, resolveStockForPortion } from "@/lib/menu-stock";
 import { getUgandaServiceDate } from "@/lib/menu-stock";
+import { setOrderAccessCookie } from "@/lib/order-access";
 import { generatePickupCode, generatePublicToken } from "@/lib/order-utils";
 import {
   cancelRejectedOrderPaymentInitiation,
   initiateOrderPaymentForOrder,
   isPesapalInitiationRejectedError
 } from "@/lib/payments/order-payments";
-import { allowOrder } from "@/lib/rate-limit";
+import { enforceRateLimit } from "@/lib/rate-limit";
+import { isContentLengthTooLarge } from "@/lib/request-limits";
 import { resolveSiteOrigin } from "@/lib/site-url";
 import { pickupSelectionToPromisedAt } from "@/lib/shared-schema";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { createOrderSchema, getClientIp } from "@/lib/validation";
+import { createOrderSchema } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +33,18 @@ interface CreatedOrderRow {
   pickup_code: string | null;
 }
 
+function tooManyRequests(retryAfterSeconds: number) {
+  return NextResponse.json(
+    { error: "Too many requests. Please wait and try again." },
+    { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } }
+  );
+}
+
 export async function POST(req: NextRequest) {
+  if (isContentLengthTooLarge(req, 32 * 1024)) {
+    return NextResponse.json({ error: "Order payload is too large." }, { status: 413 });
+  }
+
   const body = await req.json().catch(() => null);
   const parsed = createOrderSchema.safeParse(body);
 
@@ -39,19 +52,38 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid order payload" }, { status: 400 });
   }
 
-  const input = parsed.data;
-  const ip = getClientIp(req.headers.get("x-forwarded-for"));
-  const rateCheck = allowOrder(ip, input.phone);
+  const input = {
+    ...parsed.data,
+    items: Array.from(
+      parsed.data.items
+        .reduce((itemMap, item) => {
+          itemMap.set(item.menu_item_id, (itemMap.get(item.menu_item_id) ?? 0) + item.qty);
+          return itemMap;
+        }, new Map<number, number>())
+        .entries()
+    ).map(([menu_item_id, qty]) => ({ menu_item_id, qty }))
+  };
 
-  if (!rateCheck.ok) {
-    return NextResponse.json({ error: rateCheck.reason }, { status: 429 });
+  if (input.items.some((item) => item.qty > 20)) {
+    return NextResponse.json({ error: "Item quantity is too large" }, { status: 400 });
+  }
+
+  const routeRateLimit = await enforceRateLimit(req, "order-create", 8, 10 * 60 * 1000);
+  if (!routeRateLimit.allowed) {
+    return tooManyRequests(routeRateLimit.retryAfterSeconds);
+  }
+
+  const phoneRateLimit = await enforceRateLimit(req, "order-create-phone", 4, 10 * 60 * 1000, {
+    bucketSuffix: input.phone
+  });
+  if (!phoneRateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many orders for this phone number. Please wait before retrying." },
+      { status: 429, headers: { "Retry-After": String(phoneRateLimit.retryAfterSeconds) } }
+    );
   }
 
   const ids = Array.from(new Set(input.items.map((i) => i.menu_item_id)));
-  const requestedQuantities = input.items.reduce((quantityMap, item) => {
-    quantityMap.set(item.menu_item_id, (quantityMap.get(item.menu_item_id) ?? 0) + item.qty);
-    return quantityMap;
-  }, new Map<number, number>());
   const supabase = getSupabaseAdmin();
 
   const { data: menuItems, error: menuError } = await supabase
@@ -91,13 +123,12 @@ export async function POST(req: NextRequest) {
     }
 
     const stock = resolveStockForPortion(dbItem.portion_type_id, dailyStockMap, finishedStockMap);
-    const requestedQuantity = requestedQuantities.get(item.menu_item_id) ?? item.qty;
 
     if (stock.availableQuantity <= 0) {
       return NextResponse.json({ error: `${dbItem.name} is out of stock` }, { status: 400 });
     }
 
-    if (requestedQuantity > stock.availableQuantity) {
+    if (item.qty > stock.availableQuantity) {
       return NextResponse.json({ error: `Only ${stock.availableQuantity} ${dbItem.name} left` }, { status: 400 });
     }
 
@@ -175,6 +206,10 @@ export async function POST(req: NextRequest) {
       const payment = await initiateOrderPaymentForOrder(orderRow.public_token, {
         requestOrigin: resolveSiteOrigin(req.url)
       });
+      await setOrderAccessCookie({
+        orderId: orderRow.id,
+        publicToken: orderRow.public_token
+      });
 
       return NextResponse.json({
         public_token: orderRow.public_token,
@@ -193,6 +228,10 @@ export async function POST(req: NextRequest) {
           publicToken: orderRow.public_token,
           reasonCode: paymentError.code,
           reasonMessage: paymentError.providerMessage
+        });
+        await setOrderAccessCookie({
+          orderId: orderRow.id,
+          publicToken: orderRow.public_token
         });
 
         return NextResponse.json({
