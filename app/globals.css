@@ -29,6 +29,36 @@ body {
   color: #20201e;
 }
 
+html[data-theme="dark"],
+html[data-theme="dark"] body {
+  background: #161311;
+  color: #f2ede6;
+}
+
+html[data-theme="dark"] .bg-cream {
+  background: #161311;
+}
+
+html[data-theme="dark"] .header-wood-strip {
+  background: linear-gradient(90deg, #0f0d0b 0%, #2e211c 48%, #090807 100%);
+}
+
+html[data-theme="dark"] .btn-primary {
+  background:
+    linear-gradient(90deg, rgba(166, 107, 85, 0.28) 0%, rgba(166, 107, 85, 0) 18%, rgba(166, 107, 85, 0) 82%, rgba(166, 107, 85, 0.22) 100%),
+    linear-gradient(135deg, rgba(242, 237, 230, 0.08) 0%, rgba(242, 237, 230, 0) 42%),
+    linear-gradient(180deg, #3d2a21 0%, #241916 52%, #110f0d 100%);
+  color: #f2ede6;
+}
+
+html[data-theme="dark"] input,
+html[data-theme="dark"] select,
+html[data-theme="dark"] textarea {
+  border: 1px solid #4f4a46;
+  background: #201c19;
+  color: #f2ede6;
+}
+
 .header-wood-strip {
   background: linear-gradient(90deg, #2d2521 0%, #4d3327 48%, #1d1916 100%);
 }

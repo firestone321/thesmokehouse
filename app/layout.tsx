@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { PwaRegister } from "@/components/pwa-register";
+import { ThemeProvider } from "@/components/providers/theme-provider";
+import { getThemeBootstrapScript, LIGHT_THEME_COLOR } from "@/lib/theme";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -34,17 +36,22 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#F4EFE6",
   colorScheme: "light"
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <meta name="theme-color" content={LIGHT_THEME_COLOR} />
+        <script dangerouslySetInnerHTML={{ __html: getThemeBootstrapScript() }} />
+      </head>
       <body className="font-body">
-        <PwaRegister />
-        {children}
-        <SpeedInsights />
+        <ThemeProvider>
+          <PwaRegister />
+          {children}
+          <SpeedInsights />
+        </ThemeProvider>
       </body>
     </html>
   );

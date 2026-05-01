@@ -4,8 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useState } from "react";
-import { useCartStore } from "@/lib/store";
-import { useCartHydration } from "@/lib/use-cart-hydration";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const links: Array<{ href: "/" | "/order" | "/cart" | "/checkout"; label: string; description: string }> = [
   { href: "/", label: "Menu", description: "Smoked proteins, sides, and drinks" },
@@ -26,9 +25,6 @@ export function SiteHeader() {
   const pathname = usePathname();
   const [mobileMenuPath, setMobileMenuPath] = useState<string | null>(null);
   const mobileDrawerId = useId();
-  const hydrated = useCartHydration();
-  const cartCount = useCartStore((state) => state.count());
-  const safeCartCount = hydrated ? cartCount : 0;
   const isMobileMenuOpen = mobileMenuPath === pathname;
 
   useEffect(() => {
@@ -124,15 +120,7 @@ export function SiteHeader() {
             ))}
           </nav>
 
-          <Link
-            href="/cart"
-            className="inline-flex h-11 items-center gap-2 rounded-md border border-[#B8BAB6] bg-[#F2F2EF] px-3 text-sm font-extrabold uppercase tracking-wide text-[#242321] transition hover:border-[#8D918C] hover:bg-[#DADBD7]"
-          >
-            <span>Cart</span>
-            <span className="inline-flex min-w-6 justify-center rounded bg-[#4D3327] px-1.5 py-0.5 text-xs text-[#EEEEEA]">
-              {safeCartCount}
-            </span>
-          </Link>
+          <ThemeToggle />
         </div>
       </header>
 
