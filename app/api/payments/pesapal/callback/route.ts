@@ -1,4 +1,6 @@
 import { after, NextResponse } from "next/server";
+import { captureOperationalIncident } from "@/lib/ops/incidents";
+import { logSecurityEvent } from "@/lib/observability/security-events";
 import {
   markOrderPaymentCancelled,
   scheduleDuePendingPaymentRecovery,
@@ -7,13 +9,28 @@ import {
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { resolveSiteOrigin } from "@/lib/site-url";
 
+function tooManyRequests(retryAfterSeconds: number) {
+  return NextResponse.json(
+    { message: "Too many requests. Please wait and try again." },
+    { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } }
+  );
+}
+
 export async function GET(request: Request) {
   const rateLimit = await enforceRateLimit(request, "payment-callback", 30, 60_000);
   if (!rateLimit.allowed) {
-    return NextResponse.json(
-      { message: "Too many requests. Please wait and try again." },
-      { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
-    );
+    logSecurityEvent({
+      event: "payment_callback_rate_limited",
+      severity: "warning",
+      request,
+      details: {
+        retryAfterSeconds: rateLimit.retryAfterSeconds
+      },
+      report: {
+        thresholds: [10, 25, 50]
+      }
+    });
+    return tooManyRequests(rateLimit.retryAfterSeconds);
   }
 
   const requestUrl = new URL(request.url);
@@ -34,12 +51,53 @@ export async function GET(request: Request) {
         });
       }
     } catch (error) {
+      if (!cancelled && orderTrackingId) {
+        await captureOperationalIncident({
+          type: "payment_callback_sync_failed",
+          severity: "critical",
+          source: "pesapal_callback",
+          message: "Pesapal callback payment sync failed.",
+          dedupeKey: `payment_callback_sync_failed:${token}:${orderTrackingId}`,
+          context: {
+            publicToken: token,
+            orderTrackingId,
+            error: error instanceof Error ? error.message : "unknown_error"
+          }
+        });
+        logSecurityEvent({
+          event: "payment_callback_sync_failed",
+          severity: "error",
+          request,
+          details: {
+            publicToken: token,
+            orderTrackingId,
+            error: error instanceof Error ? error.message : "unknown error"
+          }
+        });
+      }
+
       console.error("pesapal_callback_sync_failed", {
         token,
         orderTrackingId: orderTrackingId ?? null,
         error: error instanceof Error ? error.message : "unknown error"
       });
     }
+  }
+
+  if (!cancelled && (!token || !orderTrackingId)) {
+    logSecurityEvent({
+      event: "payment_callback_missing_identifiers",
+      severity: "warning",
+      request,
+      details: {
+        publicToken: token ?? null,
+        orderTrackingId: orderTrackingId ?? null,
+        cancelled
+      },
+      report: {
+        thresholds: [3, 10, 25]
+      }
+    });
   }
 
   const resultUrl = new URL("/payment/result", resolveSiteOrigin(request.url));

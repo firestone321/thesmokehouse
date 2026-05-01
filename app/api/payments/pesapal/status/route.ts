@@ -1,16 +1,32 @@
 import { after, NextResponse } from "next/server";
 import { hasOrderAccess, setOrderAccessCookie } from "@/lib/order-access";
+import { logSecurityEvent } from "@/lib/observability/security-events";
 import { getOrderPaymentSnapshot, scheduleDuePendingPaymentRecovery } from "@/lib/payments/order-payments";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
+function tooManyRequests(retryAfterSeconds: number) {
+  return NextResponse.json(
+    { message: "Too many requests. Please wait and try again." },
+    { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } }
+  );
+}
+
 export async function GET(request: Request) {
   const rateLimit = await enforceRateLimit(request, "payment-status", 18, 60_000);
   if (!rateLimit.allowed) {
-    return NextResponse.json(
-      { message: "Too many requests. Please wait and try again." },
-      { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
-    );
+    logSecurityEvent({
+      event: "payment_status_rate_limited",
+      severity: "warning",
+      request,
+      details: {
+        retryAfterSeconds: rateLimit.retryAfterSeconds
+      },
+      report: {
+        thresholds: [5, 10, 25]
+      }
+    });
+    return tooManyRequests(rateLimit.retryAfterSeconds);
   }
 
   const { searchParams } = new URL(request.url);
@@ -44,8 +60,16 @@ export async function GET(request: Request) {
   });
 
   if (!hasAccess && !bootstrapAccess) {
-    console.warn("payment_status_missing_access_session", {
-      orderId: accessOrder.id
+    logSecurityEvent({
+      event: "payment_status_missing_access_session",
+      severity: "warning",
+      request,
+      details: {
+        orderId: accessOrder.id
+      },
+      report: {
+        thresholds: [5, 10, 25]
+      }
     });
     return NextResponse.json({ message: "Missing valid order access session." }, { status: 403 });
   }

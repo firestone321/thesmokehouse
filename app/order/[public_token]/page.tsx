@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { EnableOrderNotifications } from "@/components/enable-order-notifications";
 import { SiteFooter } from "@/components/site-footer";
@@ -10,6 +10,14 @@ import { getOrderByPublicToken } from "@/lib/api";
 import { syncGuestOrderFromServer } from "@/lib/guest-order";
 import { Order } from "@/lib/types";
 import { formatCurrency, formatPaymentStatus, formatStatus } from "@/lib/format";
+
+type PollingPolicy = {
+  key: "pending_payment" | "paid_active";
+  intervalMs: number;
+  maxDurationMs: number;
+  hiddenMessage: string;
+  stoppedMessage: string;
+};
 
 function getOrderHeading(order: Order) {
   if (order.status === "completed") {
@@ -67,6 +75,47 @@ function shouldShowPickupCode(order: Order) {
   return order.payment_status === "paid" && order.status !== "completed" && order.status !== "cancelled";
 }
 
+function getPollingPolicy(order: Order | null): PollingPolicy | null {
+  if (!order) {
+    return null;
+  }
+
+  if (
+    order.status === "ready"
+    || order.status === "completed"
+    || order.status === "cancelled"
+    || order.payment_status === "cancelled"
+    || order.payment_status === "failed"
+  ) {
+    return null;
+  }
+
+  if (order.payment_status === "pending") {
+    return {
+      key: "pending_payment",
+      intervalMs: 10_000,
+      maxDurationMs: 5 * 60_000,
+      hiddenMessage: "Auto refresh pauses while this tab is hidden. We will check again when you come back.",
+      stoppedMessage: "Automatic payment checks paused after 5 minutes. Use Refresh Status for another check."
+    };
+  }
+
+  if (
+    order.payment_status === "paid"
+    && (order.status === "new" || order.status === "confirmed" || order.status === "in_prep")
+  ) {
+    return {
+      key: "paid_active",
+      intervalMs: 30_000,
+      maxDurationMs: 30 * 60_000,
+      hiddenMessage: "Auto refresh pauses while this tab is hidden. We will refresh once when you return.",
+      stoppedMessage: "Automatic kitchen updates paused after 30 minutes. Use Refresh Status to check again."
+    };
+  }
+
+  return null;
+}
+
 const paymentStyles = {
   paid: {
     eyebrow: "Order confirmed",
@@ -97,40 +146,141 @@ const paymentStyles = {
 export default function OrderTrackingPage() {
   const params = useParams<{ public_token: string }>();
   const [order, setOrder] = useState<Order | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [fatalError, setFatalError] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(true);
+  const [requestSequence, setRequestSequence] = useState(0);
+  const [isPageVisible, setIsPageVisible] = useState(() => (
+    typeof document === "undefined" ? true : document.visibilityState === "visible"
+  ));
+  const [stoppedPolicyKey, setStoppedPolicyKey] = useState<PollingPolicy["key"] | null>(null);
+  const hasBootstrappedAccessRef = useRef(false);
+  const lastVisibilityStateRef = useRef(
+    typeof document === "undefined" ? true : document.visibilityState === "visible"
+  );
+  const orderRef = useRef<Order | null>(null);
+  const pollingWindowRef = useRef<{ key: PollingPolicy["key"]; startedAt: number } | null>(null);
+  const pollingPolicy = getPollingPolicy(order);
+  const isAutoRefreshStopped = pollingPolicy ? stoppedPolicyKey === pollingPolicy.key : false;
+
+  useEffect(() => {
+    hasBootstrappedAccessRef.current = false;
+    orderRef.current = null;
+    pollingWindowRef.current = null;
+    setOrder(null);
+    setFatalError(null);
+    setRefreshError(null);
+    setStoppedPolicyKey(null);
+  }, [params.public_token]);
 
   useEffect(() => {
     let active = true;
-    let hasBootstrappedAccess = false;
 
     async function load() {
+      setIsRefreshing(true);
       try {
         const data = await getOrderByPublicToken(params.public_token, {
-          bootstrapAccess: !hasBootstrappedAccess
+          bootstrapAccess: !hasBootstrappedAccessRef.current
         });
-        hasBootstrappedAccess = true;
+        hasBootstrappedAccessRef.current = true;
         if (active) {
           syncGuestOrderFromServer(data);
+          orderRef.current = data;
           setOrder(data);
-          setError(null);
+          setFatalError(null);
+          setRefreshError(null);
         }
       } catch (err) {
-        if (active) setError(err instanceof Error ? err.message : "Order not found");
+        if (!active) {
+          return;
+        }
+
+        const message = err instanceof Error ? err.message : "Order not found";
+        if (orderRef.current) {
+          setRefreshError(message);
+        } else {
+          setFatalError(message);
+        }
+      } finally {
+        if (active) {
+          setIsRefreshing(false);
+        }
       }
     }
 
     void load();
-    const timer = setInterval(() => {
-      void load();
-    }, 15000);
 
     return () => {
       active = false;
-      clearInterval(timer);
     };
-  }, [params.public_token]);
+  }, [params.public_token, requestSequence]);
 
-  if (error) {
+  useEffect(() => {
+    function handleVisibilityChange() {
+      setIsPageVisible(document.visibilityState === "visible");
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    const wasVisible = lastVisibilityStateRef.current;
+    lastVisibilityStateRef.current = isPageVisible;
+
+    if (!orderRef.current || !isPageVisible || wasVisible) {
+      return;
+    }
+
+    setRequestSequence((current) => current + 1);
+  }, [isPageVisible]);
+
+  useEffect(() => {
+    if (!pollingPolicy) {
+      pollingWindowRef.current = null;
+      return;
+    }
+
+    const existingWindow = pollingWindowRef.current;
+    if (!existingWindow || existingWindow.key !== pollingPolicy.key) {
+      pollingWindowRef.current = {
+        key: pollingPolicy.key,
+        startedAt: Date.now()
+      };
+      setStoppedPolicyKey(null);
+    }
+  }, [pollingPolicy]);
+
+  useEffect(() => {
+    if (!order || !pollingPolicy || !isPageVisible || fatalError || isRefreshing || isAutoRefreshStopped) {
+      return;
+    }
+
+    const pollingWindow = pollingWindowRef.current;
+    if (!pollingWindow || pollingWindow.key !== pollingPolicy.key) {
+      return;
+    }
+
+    const elapsedMs = Date.now() - pollingWindow.startedAt;
+    const remainingMs = pollingPolicy.maxDurationMs - elapsedMs;
+
+    if (remainingMs <= 0) {
+      setStoppedPolicyKey(pollingPolicy.key);
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setRequestSequence((current) => current + 1);
+    }, Math.min(pollingPolicy.intervalMs, remainingMs));
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [fatalError, isAutoRefreshStopped, isPageVisible, isRefreshing, order, pollingPolicy]);
+
+  if (fatalError) {
     return (
       <div className="min-h-screen bg-[#F4EFE6]">
         <SiteHeader />
@@ -138,10 +288,24 @@ export default function OrderTrackingPage() {
           <section className="mx-auto max-w-4xl rounded-md border border-[#A23B22]/20 bg-[#FFF1E8] p-6 shadow-[0_20px_50px_rgba(42,33,26,0.1)]">
             <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#A23B22]">Tracking unavailable</p>
             <h1 className="mt-3 font-heading text-5xl leading-none tracking-normal text-[#4B2E1F]">ORDER NOT FOUND</h1>
-            <p className="mt-4 text-sm font-semibold leading-7 text-[#6A5647]">{error}</p>
-            <Link href="/" className="btn-primary mt-6 inline-flex rounded-md px-5 py-3 text-sm font-extrabold uppercase tracking-wide">
-              Back to Menu
-            </Link>
+            <p className="mt-4 text-sm font-semibold leading-7 text-[#6A5647]">{fatalError}</p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setFatalError(null);
+                  setRefreshError(null);
+                  setRequestSequence((current) => current + 1);
+                }}
+                disabled={isRefreshing}
+                className="rounded-md border border-[#4B2E1F]/25 bg-white px-5 py-3 text-sm font-extrabold uppercase tracking-wide text-[#4B2E1F] transition hover:bg-[#F8E6C8] disabled:opacity-60"
+              >
+                {isRefreshing ? "Refreshing" : "Refresh Status"}
+              </button>
+              <Link href="/" className="btn-primary inline-flex rounded-md px-5 py-3 text-sm font-extrabold uppercase tracking-wide">
+                Back to Menu
+              </Link>
+            </div>
           </section>
         </main>
         <SiteFooter />
@@ -169,7 +333,13 @@ export default function OrderTrackingPage() {
   const heroMessage =
     order.status === "completed"
       ? "This order has been picked up. Receipt access stays on this device for 24 hours."
-      : "Track this pickup ticket live. We refresh the kitchen state every few seconds.";
+      : "Track this pickup ticket live. We refresh it automatically while the order is still active.";
+  const pollingNotice = refreshError
+    ?? (!isPageVisible && pollingPolicy
+      ? pollingPolicy.hiddenMessage
+      : isAutoRefreshStopped && pollingPolicy
+        ? pollingPolicy.stoppedMessage
+        : null);
 
   return (
     <div className="min-h-screen bg-[#F4EFE6]">
@@ -274,6 +444,17 @@ export default function OrderTrackingPage() {
                 <p>When this page says ready, bring the pickup code to the counter.</p>
                 <p>Staff complete the order only after matching your code.</p>
               </div>
+              {pollingNotice ? (
+                <div
+                  className={`mt-5 rounded-md border p-4 text-sm font-semibold leading-6 ${
+                    refreshError
+                      ? "border-[#A23B22]/25 bg-[#FFF1E8] text-[#7A2A18]"
+                      : "border-[#4B2E1F]/15 bg-white text-[#5C4A3E]"
+                  }`}
+                >
+                  {pollingNotice}
+                </div>
+              ) : null}
               {order.payment_status !== "paid" ? (
                 <div className="mt-5 rounded-md border border-[#C28A2E]/25 bg-[#FFF7E5] p-4 text-sm font-semibold leading-6 text-[#6D4415]">
                   {getUnpaidAsideMessage(order)}
@@ -281,6 +462,18 @@ export default function OrderTrackingPage() {
               ) : null}
               {order.payment_status === "paid" && order.status !== "completed" ? <EnableOrderNotifications orderId={order.id} /> : null}
               <div className="mt-5 grid gap-3 border-t border-[#2B211B]/10 pt-5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRefreshError(null);
+                    setFatalError(null);
+                    setRequestSequence((current) => current + 1);
+                  }}
+                  disabled={isRefreshing}
+                  className="block w-full rounded-md border border-[#4B2E1F]/25 bg-white px-4 py-3 text-center text-sm font-extrabold uppercase tracking-wide text-[#4B2E1F] transition hover:bg-[#F8E6C8] disabled:opacity-60"
+                >
+                  {isRefreshing ? "Refreshing" : "Refresh Status"}
+                </button>
                 <Link href="/" className="btn-primary block rounded-md px-4 py-3 text-center text-sm font-extrabold uppercase tracking-wide">
                   Order Again
                 </Link>

@@ -1,4 +1,6 @@
 import { after, NextResponse } from "next/server";
+import { captureOperationalIncident } from "@/lib/ops/incidents";
+import { logSecurityEvent } from "@/lib/observability/security-events";
 import { scheduleDuePendingPaymentRecovery, syncPesapalPaymentForOrder } from "@/lib/payments/order-payments";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { isContentLengthTooLarge } from "@/lib/request-limits";
@@ -8,6 +10,13 @@ type PesapalNotificationPayload = {
   OrderTrackingId?: string | null;
   OrderMerchantReference?: string | null;
 };
+
+function tooManyRequests(retryAfterSeconds: number) {
+  return NextResponse.json(
+    { message: "Too many requests. Please wait and try again." },
+    { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } }
+  );
+}
 
 function buildAck(payload: PesapalNotificationPayload) {
   const params = new URLSearchParams();
@@ -63,10 +72,18 @@ async function handleNotification(request: Request) {
 
   const rateLimit = await enforceRateLimit(request, "payment-ipn", 60, 60_000);
   if (!rateLimit.allowed) {
-    return NextResponse.json(
-      { message: "Too many requests. Please wait and try again." },
-      { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
-    );
+    logSecurityEvent({
+      event: "payment_ipn_rate_limited",
+      severity: "warning",
+      request,
+      details: {
+        retryAfterSeconds: rateLimit.retryAfterSeconds
+      },
+      report: {
+        thresholds: [10, 25, 50]
+      }
+    });
+    return tooManyRequests(rateLimit.retryAfterSeconds);
   }
 
   const payload = await parseNotificationPayload(request);
@@ -74,6 +91,19 @@ async function handleNotification(request: Request) {
   const orderTrackingId = payload.OrderTrackingId?.trim();
 
   if (!token || !orderTrackingId) {
+    logSecurityEvent({
+      event: "payment_ipn_missing_identifiers",
+      severity: "warning",
+      request,
+      details: {
+        publicToken: token ?? null,
+        orderTrackingId: orderTrackingId ?? null,
+        notificationType: payload.OrderNotificationType ?? null
+      },
+      report: {
+        thresholds: [3, 10, 25]
+      }
+    });
     return NextResponse.json({ message: "Missing notification identifiers." }, { status: 400 });
   }
 
@@ -83,6 +113,29 @@ async function handleNotification(request: Request) {
       orderTrackingId
     });
   } catch (error) {
+    await captureOperationalIncident({
+      type: "payment_ipn_sync_failed",
+      severity: "critical",
+      source: "pesapal_ipn",
+      message: "Pesapal IPN payment sync failed.",
+      dedupeKey: `payment_ipn_sync_failed:${token}:${orderTrackingId}`,
+      context: {
+        publicToken: token,
+        orderTrackingId,
+        notificationType: payload.OrderNotificationType ?? null,
+        error: error instanceof Error ? error.message : "unknown_error"
+      }
+    });
+    logSecurityEvent({
+      event: "payment_ipn_sync_failed",
+      severity: "error",
+      request,
+      details: {
+        publicToken: token,
+        orderTrackingId,
+        error: error instanceof Error ? error.message : "unknown error"
+      }
+    });
     console.error("pesapal_ipn_sync_failed", {
       token,
       orderTrackingId,
