@@ -18,6 +18,8 @@ type NavigatorWithStandalone = Navigator & {
   standalone?: boolean;
 };
 
+const PUSH_DEVICE_ID_STORAGE_KEY = "smokehouse_push_device_id";
+
 function isIosDevice() {
   return /iphone|ipad|ipod/i.test(window.navigator.userAgent);
 }
@@ -56,10 +58,32 @@ function subscriptionMatchesVapidKey(subscription: PushSubscription, publicKey: 
   return subscriptionKey === publicKey;
 }
 
+function createDeviceId() {
+  if (window.crypto?.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+
+  const random = new Uint8Array(16);
+  window.crypto.getRandomValues(random);
+  return Array.from(random, (value) => value.toString(16).padStart(2, "0")).join("");
+}
+
+function getOrCreatePushDeviceId() {
+  const existing = window.localStorage.getItem(PUSH_DEVICE_ID_STORAGE_KEY);
+  if (existing) {
+    return existing;
+  }
+
+  const next = createDeviceId();
+  window.localStorage.setItem(PUSH_DEVICE_ID_STORAGE_KEY, next);
+  return next;
+}
+
 function buildSubscribePayload(orderId: number, subscription: PushSubscriptionWithJson) {
   return {
     ...subscription.toJSON(),
-    orderId
+    orderId,
+    deviceId: getOrCreatePushDeviceId()
   };
 }
 
@@ -148,7 +172,7 @@ export function EnableOrderNotifications({ orderId }: EnableOrderNotificationsPr
 
         if (!cancelled) {
           setLinkState("linking");
-          setMessage("Linking this browser to your current order notifications...");
+          setMessage("Keeping pickup alerts active on this device...");
         }
 
         await linkSubscriptionToOrder(orderId, subscription as PushSubscriptionWithJson);
@@ -201,7 +225,7 @@ export function EnableOrderNotifications({ orderId }: EnableOrderNotificationsPr
     }
 
     setLinkState("linking");
-    setMessage("Linking notifications to this order...");
+    setMessage("Turning on pickup alerts for this device...");
 
     try {
       const permission = nextPermissionState === "granted"

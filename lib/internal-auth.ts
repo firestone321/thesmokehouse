@@ -19,6 +19,7 @@ type InternalRequestTokenClaims = {
   iat: number;
   exp: number;
   idempotencyKey?: string;
+  orderId?: string;
 };
 
 type VerifyInternalRequestTokenInput = {
@@ -30,9 +31,14 @@ type VerifyInternalRequestTokenInput = {
   method: string;
   path: string;
   idempotencyKey?: string;
+  orderId?: string;
 };
 
 export class InternalRequestAuthError extends Error {}
+
+function encodeBase64Url(value: string) {
+  return Buffer.from(value, "utf8").toString("base64url");
+}
 
 function decodeBase64Url(value: string) {
   return Buffer.from(value, "base64url").toString("utf8");
@@ -75,6 +81,7 @@ function isValidClaimsShape(value: InternalRequestTokenClaims) {
     && typeof value.iat === "number"
     && typeof value.exp === "number"
     && (value.idempotencyKey === undefined || typeof value.idempotencyKey === "string")
+    && (value.orderId === undefined || typeof value.orderId === "string")
   );
 }
 
@@ -95,6 +102,40 @@ export function requireInternalRequestSigningSecret(envName: string) {
   }
 
   return value;
+}
+
+export function signInternalRequestToken(input: {
+  secret: string;
+  issuer: string;
+  audience: string;
+  purpose: string;
+  method: string;
+  path: string;
+  expiresInSeconds?: number;
+  idempotencyKey?: string;
+  orderId?: string;
+}) {
+  const now = Math.floor(Date.now() / 1000);
+  const header: InternalTokenHeader = {
+    alg: "HS256",
+    typ: "internal-request"
+  };
+  const claims: InternalRequestTokenClaims = {
+    iss: input.issuer,
+    aud: input.audience,
+    purpose: input.purpose,
+    method: input.method.toUpperCase(),
+    path: input.path,
+    iat: now,
+    exp: now + (input.expiresInSeconds ?? DEFAULT_EXPIRY_SECONDS),
+    ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
+    ...(input.orderId ? { orderId: input.orderId } : {})
+  };
+  const encodedHeader = encodeBase64Url(JSON.stringify(header));
+  const encodedClaims = encodeBase64Url(JSON.stringify(claims));
+  const signature = signHmac(input.secret, `${encodedHeader}.${encodedClaims}`);
+
+  return `${encodedHeader}.${encodedClaims}.${signature}`;
 }
 
 export function verifyInternalRequestToken(input: VerifyInternalRequestTokenInput) {
@@ -136,6 +177,10 @@ export function verifyInternalRequestToken(input: VerifyInternalRequestTokenInpu
   }
 
   if (input.idempotencyKey !== undefined && claims.idempotencyKey !== input.idempotencyKey) {
+    throw new InternalRequestAuthError("Internal request token rejected.");
+  }
+
+  if (input.orderId !== undefined && claims.orderId !== input.orderId) {
     throw new InternalRequestAuthError("Internal request token rejected.");
   }
 

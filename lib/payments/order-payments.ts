@@ -4,6 +4,7 @@ import {
   isPesapalInitiationRejectedError,
   submitPesapalOrderRequest
 } from "@/lib/payments/pesapal";
+import { triggerAdminPaidOrderPushDispatch } from "@/lib/push/admin-paid-order";
 
 type PaymentStatus = "pending" | "paid" | "failed" | "cancelled";
 type PaymentViewState = "success" | "failed" | "cancelled" | "pending";
@@ -544,6 +545,15 @@ export async function syncPesapalPaymentForOrder(input: {
 
     if (error) {
       throw new Error(`Unable to mark order as paid: ${error.message}`);
+    }
+
+    if (storedPaymentStatus !== "paid") {
+      await triggerAdminPaidOrderPushDispatch(row.id).catch((error) => {
+        console.error("admin_paid_order_push_dispatch_failed", {
+          orderId: row.id,
+          error: error instanceof Error ? error.message : "unknown_error"
+        });
+      });
     }
   } else {
     const { error } = await getSupabaseAdmin()
