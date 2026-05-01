@@ -42,6 +42,20 @@ function getPermissionState(): SupportedPermissionState {
   return supportsPushNotifications() ? Notification.permission : "unsupported";
 }
 
+function encodeVapidPublicKey(value: ArrayBuffer | null) {
+  if (!value) {
+    return "";
+  }
+
+  const binary = String.fromCharCode(...new Uint8Array(value));
+  return window.btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function subscriptionMatchesVapidKey(subscription: PushSubscription, publicKey: string) {
+  const subscriptionKey = encodeVapidPublicKey(subscription.options.applicationServerKey);
+  return subscriptionKey === publicKey;
+}
+
 function buildSubscribePayload(orderId: number, subscription: PushSubscriptionWithJson) {
   return {
     ...subscription.toJSON(),
@@ -59,6 +73,23 @@ async function ensureServiceWorkerRegistration() {
   await navigator.serviceWorker.ready;
 
   return registration;
+}
+
+async function createOrRefreshSubscription(registration: ServiceWorkerRegistration, vapidPublicKey: string) {
+  const existingSubscription = await registration.pushManager.getSubscription();
+
+  if (existingSubscription && subscriptionMatchesVapidKey(existingSubscription, vapidPublicKey)) {
+    return existingSubscription;
+  }
+
+  if (existingSubscription) {
+    await existingSubscription.unsubscribe();
+  }
+
+  return registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
+  });
 }
 
 async function linkSubscriptionToOrder(orderId: number, subscription: PushSubscriptionWithJson) {
@@ -107,22 +138,20 @@ export function EnableOrderNotifications({ orderId }: EnableOrderNotificationsPr
       }
 
       try {
-        const registration = await ensureServiceWorkerRegistration();
-        const existingSubscription = await registration.pushManager.getSubscription();
-
-        if (!existingSubscription) {
-          if (!cancelled) {
-            setLinkState("needs_permission");
-          }
-          return;
+        const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY?.trim();
+        if (!vapidPublicKey) {
+          throw new Error("Push notifications are not configured yet. Please try again later.");
         }
+
+        const registration = await ensureServiceWorkerRegistration();
+        const subscription = await createOrRefreshSubscription(registration, vapidPublicKey);
 
         if (!cancelled) {
           setLinkState("linking");
           setMessage("Linking this browser to your current order notifications...");
         }
 
-        await linkSubscriptionToOrder(orderId, existingSubscription as PushSubscriptionWithJson);
+        await linkSubscriptionToOrder(orderId, subscription as PushSubscriptionWithJson);
 
         if (!cancelled) {
           setLinkState("linked");
@@ -192,12 +221,7 @@ export function EnableOrderNotifications({ orderId }: EnableOrderNotificationsPr
       }
 
       const registration = await ensureServiceWorkerRegistration();
-      const existingSubscription = await registration.pushManager.getSubscription();
-      const subscription = existingSubscription
-        ?? await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
-        });
+      const subscription = await createOrRefreshSubscription(registration, vapidPublicKey);
 
       await linkSubscriptionToOrder(orderId, subscription as PushSubscriptionWithJson);
 
