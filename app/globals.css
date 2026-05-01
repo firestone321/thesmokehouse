@@ -3,13 +3,55 @@
 @tailwind utilities;
 
 :root {
-  --bg-cream: #ececea;
-  --bg-sand: #f5f5f2;
-  --walnut: #30241f;
-  --ember: #82432f;
-  --wood: #4d3327;
+  --background: #ececea;
+  --foreground: #242321;
+  --surface: #f2f2ef;
+  --surface-alt: #e8e8e4;
+  --surface-muted: #ddd9d4;
+  --surface-raised: rgba(242, 242, 239, 0.92);
+  --header-bg: rgba(232, 232, 228, 0.95);
+  --field: #fafafa;
+  --field-disabled: #ede1d3;
+  --border: rgba(184, 186, 182, 0.95);
+  --border-strong: rgba(143, 118, 100, 0.42);
+  --accent: #4d3327;
+  --accent-hover: #3a2a24;
+  --accent-active: #251a16;
+  --accent-disabled: #9c8b83;
+  --accent-foreground: #eeeeea;
+  --muted: #666a67;
+  --muted-foreground: #8a8d89;
+  --shadow-soft: 0 8px 18px rgba(31, 31, 29, 0.1);
+  --shadow-card: 0 14px 30px rgba(31, 31, 29, 0.09);
+  --shadow-brand: 0 12px 26px rgba(77, 51, 39, 0.22);
+  --shadow-modal: 0 24px 70px rgba(17, 16, 15, 0.32);
   --font-body: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --font-heading: Impact, "Arial Narrow Bold", sans-serif;
+}
+
+[data-theme="dark"] {
+  --background: #161311;
+  --foreground: #f2ede6;
+  --surface: #221b18;
+  --surface-alt: #2a211e;
+  --surface-muted: #312824;
+  --surface-raised: rgba(34, 27, 24, 0.92);
+  --header-bg: rgba(23, 19, 17, 0.95);
+  --field: #1d1714;
+  --field-disabled: #342923;
+  --border: rgba(231, 203, 176, 0.18);
+  --border-strong: rgba(231, 203, 176, 0.28);
+  --accent: #cf5244;
+  --accent-hover: #e76556;
+  --accent-active: #b94336;
+  --accent-disabled: #7c4c47;
+  --accent-foreground: #fff7f2;
+  --muted: #d4b69b;
+  --muted-foreground: #aa8f78;
+  --shadow-soft: 0 10px 24px rgba(0, 0, 0, 0.28);
+  --shadow-card: 0 18px 38px rgba(0, 0, 0, 0.24);
+  --shadow-brand: 0 12px 26px rgba(185, 67, 54, 0.3);
+  --shadow-modal: 0 24px 54px rgba(0, 0, 0, 0.32);
 }
 
 * {
@@ -20,43 +62,35 @@ html,
 body {
   margin: 0;
   padding: 0;
-  background: var(--bg-cream);
-  color: #1f1f1d;
+  background: var(--background);
+  color: var(--foreground);
 }
 
 body {
   font-family: var(--font-body);
-  color: #20201e;
+  transition:
+    background-color 200ms ease,
+    color 200ms ease;
 }
 
-html[data-theme="dark"],
-html[data-theme="dark"] body {
-  background: #161311;
-  color: #f2ede6;
+.bg-cream {
+  background: var(--background);
 }
 
-html[data-theme="dark"] .bg-cream {
-  background: #161311;
+.bg-sand {
+  background: var(--surface);
 }
 
-html[data-theme="dark"] .header-wood-strip {
-  background: linear-gradient(90deg, #0f0d0b 0%, #2e211c 48%, #090807 100%);
+.bg-walnut {
+  background: var(--accent);
 }
 
-html[data-theme="dark"] .btn-primary {
-  background:
-    linear-gradient(90deg, rgba(166, 107, 85, 0.28) 0%, rgba(166, 107, 85, 0) 18%, rgba(166, 107, 85, 0) 82%, rgba(166, 107, 85, 0.22) 100%),
-    linear-gradient(135deg, rgba(242, 237, 230, 0.08) 0%, rgba(242, 237, 230, 0) 42%),
-    linear-gradient(180deg, #3d2a21 0%, #241916 52%, #110f0d 100%);
-  color: #f2ede6;
+.text-cream {
+  color: var(--accent-foreground);
 }
 
-html[data-theme="dark"] input,
-html[data-theme="dark"] select,
-html[data-theme="dark"] textarea {
-  border: 1px solid #4f4a46;
-  background: #201c19;
-  color: #f2ede6;
+.text-muted {
+  color: var(--muted);
 }
 
 .header-wood-strip {
@@ -68,7 +102,7 @@ html[data-theme="dark"] textarea {
     linear-gradient(90deg, rgba(130, 67, 47, 0.34) 0%, rgba(130, 67, 47, 0) 18%, rgba(130, 67, 47, 0) 82%, rgba(130, 67, 47, 0.26) 100%),
     linear-gradient(135deg, rgba(238, 238, 232, 0.1) 0%, rgba(238, 238, 232, 0) 42%),
     linear-gradient(180deg, #5a382b 0%, #35241d 52%, #1d1916 100%);
-  color: #eeeeea;
+  color: var(--accent-foreground);
   box-shadow:
     inset 0 1px 0 rgba(238, 238, 232, 0.16),
     inset 0 -10px 20px rgba(12, 11, 10, 0.18),
@@ -99,8 +133,9 @@ html[data-theme="dark"] textarea {
 input,
 select,
 textarea {
-  border: 1px solid #c9cac7;
-  background: #fafafa;
+  border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+  background: var(--field);
+  color: var(--foreground);
 }
 
 input:focus,

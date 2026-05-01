@@ -7,7 +7,7 @@ import {
   getSystemTheme,
   THEME_MEDIA_QUERY,
   THEME_STORAGE_KEY,
-  type Theme
+  type Theme,
 } from "@/lib/theme";
 
 type ThemeContextValue = {
@@ -18,7 +18,7 @@ type ThemeContextValue = {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-export function ThemeProvider({ children }: { children: React.ReactNode }) {
+export function AppProvider({ children }: { children: React.ReactNode }) {
   const [themePreference, setThemePreference] = useState<Theme | null>(() => getStoredTheme());
   const [theme, setThemeState] = useState<Theme>(() => {
     if (typeof document === "undefined") {
@@ -35,7 +35,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
 
     const mediaQuery = window.matchMedia(THEME_MEDIA_QUERY);
-
     const syncTheme = (nextTheme: Theme) => {
       setThemeState(nextTheme);
       applyTheme(nextTheme);
@@ -55,12 +54,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     };
 
     mediaQuery.addEventListener("change", handleChange);
-    return () => {
-      mediaQuery.removeEventListener("change", handleChange);
-    };
+    return () => mediaQuery.removeEventListener("change", handleChange);
   }, [themePreference]);
 
-  const value = useMemo<ThemeContextValue>(() => {
+  const themeValue = useMemo<ThemeContextValue>(() => {
     const setTheme = (nextTheme: Theme) => {
       setThemePreference(nextTheme);
     };
@@ -73,17 +70,17 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     return {
       theme,
       setTheme,
-      toggleTheme
+      toggleTheme,
     };
   }, [theme, themePreference]);
 
-  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+  return <ThemeContext.Provider value={themeValue}>{children}</ThemeContext.Provider>;
 }
 
-export function useTheme() {
+export function useTheme(): ThemeContextValue {
   const context = useContext(ThemeContext);
   if (!context) {
-    throw new Error("useTheme must be used within ThemeProvider");
+    throw new Error("useTheme must be used within AppProvider");
   }
 
   return context;

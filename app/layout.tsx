@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { AppProvider } from "@/components/providers/app-provider";
 import { PwaRegister } from "@/components/pwa-register";
-import { ThemeProvider } from "@/components/providers/theme-provider";
 import { getThemeBootstrapScript, LIGHT_THEME_COLOR } from "@/lib/theme";
 import "./globals.css";
 
@@ -36,7 +36,11 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  colorScheme: "light"
+  colorScheme: "light",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: LIGHT_THEME_COLOR },
+    { media: "(prefers-color-scheme: dark)", color: "#161311" }
+  ]
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -46,12 +50,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="theme-color" content={LIGHT_THEME_COLOR} />
         <script dangerouslySetInnerHTML={{ __html: getThemeBootstrapScript() }} />
       </head>
-      <body className="font-body">
-        <ThemeProvider>
+      <body className="min-h-screen bg-[var(--background)] font-body text-[var(--foreground)] antialiased">
+        <AppProvider>
           <PwaRegister />
           {children}
           <SpeedInsights />
-        </ThemeProvider>
+        </AppProvider>
       </body>
     </html>
   );

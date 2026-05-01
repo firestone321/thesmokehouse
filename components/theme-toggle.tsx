@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useTheme } from "@/components/providers/theme-provider";
+import { useSyncExternalStore } from "react";
+import { useTheme } from "@/components/providers/app-provider";
 
 function SunIcon() {
   return (
@@ -22,12 +22,11 @@ function MoonIcon() {
 
 export function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
   const isDarkTheme = mounted ? theme === "dark" : false;
   const nextThemeLabel = isDarkTheme ? "light" : "dark";
 
@@ -35,12 +34,12 @@ export function ThemeToggle() {
     <button
       type="button"
       onClick={toggleTheme}
-      className="inline-flex h-11 items-center gap-2 rounded-md border border-[#B8BAB6] bg-[#F2F2EF] px-3 text-sm font-extrabold uppercase tracking-wide text-[#242321] transition hover:border-[#8D918C] hover:bg-[#DADBD7]"
+      className="inline-flex h-11 items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-alt)] px-3 text-sm font-medium text-[var(--foreground)] shadow-[var(--shadow-soft)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[var(--surface)]"
       aria-label={`Switch to ${nextThemeLabel} mode`}
       title={`Switch to ${nextThemeLabel} mode`}
     >
       {isDarkTheme ? <SunIcon /> : <MoonIcon />}
-      <span className="hidden sm:inline">{isDarkTheme ? "Light" : "Dark"}</span>
+      <span className="hidden sm:inline">{isDarkTheme ? "Light mode" : "Dark mode"}</span>
     </button>
   );
 }
