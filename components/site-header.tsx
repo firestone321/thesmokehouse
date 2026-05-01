@@ -195,7 +195,7 @@ export function SiteHeader() {
             ))}
           </nav>
 
-          <div className="mt-6 rounded-md border border-[#B8BAB6] bg-[#E8E8E4] p-4">
+          <div className="mt-6 rounded-[1.5rem] border border-[#B8BAB6] bg-[#E8E8E4] p-4">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#666A67]">Guest pickup</p>
             <p className="mt-2 text-base font-bold text-[#30241F]">This phone can reopen its latest active order.</p>
             <p className="mt-2 text-sm font-semibold leading-6 text-[#666A67]">
