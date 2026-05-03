@@ -18,8 +18,8 @@ export function CartView({ showCheckout = true }: { showCheckout?: boolean }) {
 
   if (safeItems.length === 0) {
     return (
-      <section className="mx-auto grid max-w-6xl gap-6 overflow-hidden rounded-md border border-[#C3C5C1] bg-[#F7F7F4] shadow-[0_20px_50px_rgba(31,31,29,0.12)] md:grid-cols-[1fr_340px]">
-        <div className="p-6 md:p-8">
+      <section className="mx-auto grid w-full max-w-6xl min-w-0 gap-6 overflow-hidden rounded-md border border-[#C3C5C1] bg-[#F7F7F4] shadow-[0_20px_50px_rgba(31,31,29,0.12)] md:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="min-w-0 p-6 md:p-8">
           <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#666A67]">No fire on the ticket yet</p>
           <h2 className="mt-3 font-heading text-5xl leading-none tracking-normal text-[#30241F]">CART IS EMPTY</h2>
           <p className="mt-4 max-w-xl text-sm font-semibold leading-7 text-[#555854]">
@@ -29,7 +29,7 @@ export function CartView({ showCheckout = true }: { showCheckout?: boolean }) {
             Browse Menu
           </Link>
         </div>
-        <div className="bg-[#2C2926] p-6 text-[#EEEEEA] md:p-8">
+        <div className="min-w-0 bg-[#2C2926] p-6 text-[#EEEEEA] md:p-8">
           <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#A66B55]">Pickup flow</p>
           <div className="mt-5 space-y-4 text-sm font-semibold leading-6 text-[#C9CBC7]">
             <p>1. Build your order from live stock.</p>
@@ -42,8 +42,8 @@ export function CartView({ showCheckout = true }: { showCheckout?: boolean }) {
   }
 
   return (
-    <div className="mx-auto grid max-w-7xl gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
-      <section className="rounded-md border border-[#C3C5C1] bg-[#F7F7F4] p-4 shadow-[0_20px_50px_rgba(31,31,29,0.1)] md:p-5">
+    <div className="mx-auto grid w-full max-w-7xl min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
+      <section className="min-w-0 rounded-md border border-[#C3C5C1] bg-[#F7F7F4] p-4 shadow-[0_20px_50px_rgba(31,31,29,0.1)] md:p-5">
         <div className="flex flex-wrap items-end justify-between gap-3 border-b border-[#C9CAC7] pb-4">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#666A67]">Current ticket</p>
@@ -53,11 +53,11 @@ export function CartView({ showCheckout = true }: { showCheckout?: boolean }) {
         </div>
         <div className="mt-4 space-y-3">
         {safeItems.map((item) => (
-          <article key={item.menu_item_id} className="rounded-md border border-[#C9CAC7] bg-[#FCFCFA] p-3 shadow-[0_8px_20px_rgba(31,31,29,0.06)]">
-            <div className="flex gap-4">
-              <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-md bg-[#242321]">
+          <article key={item.menu_item_id} className="w-full min-w-0 rounded-md border border-[#C9CAC7] bg-[#FCFCFA] p-3 shadow-[0_8px_20px_rgba(31,31,29,0.06)]">
+            <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:gap-4">
+              <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-md bg-[#242321] sm:h-24 sm:w-24">
                 {item.image_url ? (
-                  <Image src={item.image_url} alt={item.name} fill className="object-cover" sizes="96px" />
+                  <Image src={item.image_url} alt={item.name} fill className="object-cover" sizes="(max-width: 640px) 80px, 96px" />
                 ) : (
                   <div className="flex h-full items-center justify-center text-xs font-bold uppercase tracking-wide text-[#A66B55]">
                     Smoke
@@ -65,21 +65,21 @@ export function CartView({ showCheckout = true }: { showCheckout?: boolean }) {
                 )}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
-                    <h3 className="truncate text-lg font-black text-walnut">{item.name}</h3>
+                    <h3 className="break-words text-lg font-black leading-tight text-walnut">{item.name}</h3>
                     <p className="mt-1 text-sm font-semibold text-[#555854]">{formatCurrency(item.price)} each</p>
                   </div>
                   <button
                     type="button"
                     onClick={() => removeItem(item.menu_item_id)}
-                    className="rounded-md border border-transparent px-3 py-2 text-xs font-extrabold uppercase tracking-wide text-[#743626] transition hover:border-[#C9CAC7] hover:bg-[#ECECEA]"
+                    className="self-start rounded-md border border-transparent px-3 py-2 text-xs font-extrabold uppercase tracking-wide text-[#743626] transition hover:border-[#C9CAC7] hover:bg-[#ECECEA] sm:ml-2"
                   >
                     Remove
                   </button>
                 </div>
-                <div className="mt-4 flex items-center justify-between gap-3">
-                  <div className="flex items-center overflow-hidden rounded-md border border-[#B8BAB6] bg-[#F2F2EF]">
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex w-fit items-center overflow-hidden rounded-md border border-[#B8BAB6] bg-[#F2F2EF]">
                     <button
                       type="button"
                       onClick={() => updateQty(item.menu_item_id, item.qty - 1)}
@@ -98,7 +98,7 @@ export function CartView({ showCheckout = true }: { showCheckout?: boolean }) {
                       +
                     </button>
                   </div>
-                  <p className="text-lg font-black text-[#242321]">{formatCurrency(item.qty * item.price)}</p>
+                  <p className="text-lg font-black text-[#242321] sm:text-right">{formatCurrency(item.qty * item.price)}</p>
                 </div>
               </div>
             </div>
@@ -107,7 +107,7 @@ export function CartView({ showCheckout = true }: { showCheckout?: boolean }) {
         </div>
       </section>
 
-      <aside className="h-fit overflow-hidden rounded-md border border-[#C3C5C1] bg-[#F7F7F4] text-[#242321] shadow-[0_20px_50px_rgba(31,31,29,0.12)] lg:sticky lg:top-24">
+      <aside className="h-fit min-w-0 overflow-hidden rounded-md border border-[#C3C5C1] bg-[#F7F7F4] text-[#242321] shadow-[0_20px_50px_rgba(31,31,29,0.12)] lg:sticky lg:top-24">
         <div className="border-b border-[#C9CAC7] p-5">
           <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#666A67]">Order summary</p>
           <h2 className="mt-2 text-xl font-black uppercase tracking-wide text-[#30241F]">Ready for checkout</h2>
@@ -115,7 +115,7 @@ export function CartView({ showCheckout = true }: { showCheckout?: boolean }) {
         <div className="p-5">
           <div className="flex items-center justify-between">
             <span className="text-sm font-bold uppercase tracking-wide text-[#555854]">Total</span>
-            <span className="text-3xl font-black text-[#30241F]">{formatCurrency(safeTotal)}</span>
+            <span className="text-2xl font-black text-[#30241F] sm:text-3xl">{formatCurrency(safeTotal)}</span>
           </div>
           <div className="mt-5 space-y-3 border-t border-[#C9CAC7] pt-5 text-sm font-semibold leading-6 text-[#555854]">
             <p>Payment reserves stock only after Pesapal confirms it.</p>
