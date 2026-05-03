@@ -154,7 +154,6 @@ export default function OrderTrackingPage() {
     typeof document === "undefined" ? true : document.visibilityState === "visible"
   ));
   const [stoppedPolicyKey, setStoppedPolicyKey] = useState<PollingPolicy["key"] | null>(null);
-  const hasBootstrappedAccessRef = useRef(false);
   const lastVisibilityStateRef = useRef(
     typeof document === "undefined" ? true : document.visibilityState === "visible"
   );
@@ -164,7 +163,6 @@ export default function OrderTrackingPage() {
   const isAutoRefreshStopped = pollingPolicy ? stoppedPolicyKey === pollingPolicy.key : false;
 
   useEffect(() => {
-    hasBootstrappedAccessRef.current = false;
     orderRef.current = null;
     pollingWindowRef.current = null;
     setOrder(null);
@@ -179,10 +177,7 @@ export default function OrderTrackingPage() {
     async function load() {
       setIsRefreshing(true);
       try {
-        const data = await getOrderByPublicToken(params.public_token, {
-          bootstrapAccess: !hasBootstrappedAccessRef.current
-        });
-        hasBootstrappedAccessRef.current = true;
+        const data = await getOrderByPublicToken(params.public_token);
         if (active) {
           syncGuestOrderFromServer(data);
           orderRef.current = data;

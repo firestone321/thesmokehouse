@@ -5,12 +5,22 @@ import { cookies } from "next/headers";
 
 const ORDER_ACCESS_COOKIE_PREFIX = "smokehouse_order_access";
 const ORDER_ACCESS_MAX_AGE_SECONDS = 60 * 60 * 72;
+const RECEIPT_REOPEN_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 type OrderAccessPayload = {
   orderId: number;
   publicToken: string;
   iat: number;
   exp: number;
+};
+
+type OrderReadAccessTarget = {
+  id: number;
+  public_token: string | null;
+  status: string;
+  payment_status?: string | null;
+  completed_at?: string | null;
+  cancelled_at?: string | null;
 };
 
 function requireOrderAccessSecret() {
@@ -120,4 +130,41 @@ export async function hasOrderAccess(input: {
     payload.orderId === input.orderId
     && (!input.publicToken || payload.publicToken === input.publicToken)
   );
+}
+
+function isWithinReceiptWindow(completedAt: string | null | undefined) {
+  if (!completedAt) {
+    return false;
+  }
+
+  const completedAtMs = Date.parse(completedAt);
+  if (!Number.isFinite(completedAtMs)) {
+    return false;
+  }
+
+  return Date.now() - completedAtMs <= RECEIPT_REOPEN_WINDOW_MS;
+}
+
+export async function hasReadAccessToOrder(input: OrderReadAccessTarget) {
+  const hasAccess = await hasOrderAccess({
+    orderId: input.id,
+    publicToken: input.public_token
+  });
+
+  if (!hasAccess) {
+    return false;
+  }
+
+  const normalizedStatus = input.status.trim().toLowerCase();
+  const normalizedPaymentStatus = input.payment_status?.trim().toLowerCase() ?? "";
+
+  if (normalizedStatus === "cancelled" || normalizedPaymentStatus === "cancelled" || normalizedPaymentStatus === "failed") {
+    return false;
+  }
+
+  if (normalizedStatus === "completed") {
+    return isWithinReceiptWindow(input.completed_at);
+  }
+
+  return true;
 }

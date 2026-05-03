@@ -1,5 +1,5 @@
 import { after, NextResponse } from "next/server";
-import { hasOrderAccess, setOrderAccessCookie } from "@/lib/order-access";
+import { hasReadAccessToOrder } from "@/lib/order-access";
 import { logSecurityEvent } from "@/lib/observability/security-events";
 import { getOrderPaymentSnapshot, scheduleDuePendingPaymentRecovery } from "@/lib/payments/order-payments";
 import { enforceRateLimit } from "@/lib/rate-limit";
@@ -33,7 +33,6 @@ export async function GET(request: Request) {
   const token = searchParams.get("token")?.trim();
   const hint = searchParams.get("hint") === "cancelled" ? "cancelled" : undefined;
   const refresh = searchParams.get("refresh") !== "0";
-  const bootstrapAccess = searchParams.get("bootstrap") === "1";
 
   if (!token) {
     return NextResponse.json({ message: "Missing token." }, { status: 400 });
@@ -41,7 +40,7 @@ export async function GET(request: Request) {
 
   const { data: accessData, error: accessError } = await getSupabaseAdmin()
     .from("orders")
-    .select("id,public_token")
+    .select("id,public_token,status,payment_status,completed_at,cancelled_at")
     .eq("public_token", token)
     .maybeSingle();
 
@@ -53,13 +52,17 @@ export async function GET(request: Request) {
     return NextResponse.json({ message: "Order not found." }, { status: 404 });
   }
 
-  const accessOrder = accessData as { id: number; public_token: string | null };
-  const hasAccess = await hasOrderAccess({
-    orderId: accessOrder.id,
-    publicToken: accessOrder.public_token
-  });
+  const accessOrder = accessData as {
+    id: number;
+    public_token: string | null;
+    status: string;
+    payment_status: string | null;
+    completed_at: string | null;
+    cancelled_at: string | null;
+  };
+  const hasAccess = await hasReadAccessToOrder(accessOrder);
 
-  if (!hasAccess && !bootstrapAccess) {
+  if (!hasAccess) {
     logSecurityEvent({
       event: "payment_status_missing_access_session",
       severity: "warning",
@@ -72,13 +75,6 @@ export async function GET(request: Request) {
       }
     });
     return NextResponse.json({ message: "Missing valid order access session." }, { status: 403 });
-  }
-
-  if (!hasAccess) {
-    await setOrderAccessCookie({
-      orderId: accessOrder.id,
-      publicToken: token
-    });
   }
 
   try {

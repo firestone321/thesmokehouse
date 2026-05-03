@@ -97,7 +97,6 @@ export function PaymentResultView() {
   const [requestSequence, setRequestSequence] = useState(0);
   const [pollAttempts, setPollAttempts] = useState(0);
   const hasClearedCartRef = useRef(false);
-  const hasBootstrappedAccessRef = useRef(false);
 
   const token = searchParams.get("token");
   const hint = searchParams.get("hint") === "cancelled" ? "cancelled" : null;
@@ -134,11 +133,6 @@ export function PaymentResultView() {
 
       try {
         const requestUrl = new URL(statusUrl, window.location.origin);
-        if (!hasBootstrappedAccessRef.current) {
-          requestUrl.searchParams.set("bootstrap", "1");
-          hasBootstrappedAccessRef.current = true;
-        }
-
         const response = await fetch(`${requestUrl.pathname}${requestUrl.search}`, { cache: "no-store" });
         const nextPayload = (await response.json().catch(() => null)) as PaymentStatusResponse | null;
 

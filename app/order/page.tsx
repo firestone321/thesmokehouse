@@ -29,7 +29,7 @@ export default function LastGuestOrderPage() {
       }
 
       try {
-        const order = await getOrderByPublicToken(publicToken, { bootstrapAccess: true });
+        const order = await getOrderByPublicToken(publicToken);
         const { isExpiredReceipt } = syncGuestOrderFromServer(order);
 
         if (!active) {

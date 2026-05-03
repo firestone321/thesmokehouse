@@ -1,5 +1,5 @@
 import { after, NextResponse } from "next/server";
-import { hasOrderAccess, setOrderAccessCookie } from "@/lib/order-access";
+import { hasReadAccessToOrder } from "@/lib/order-access";
 import { scheduleDuePendingPaymentRecovery } from "@/lib/payments/order-payments";
 import { scheduleDueOrderReadyPushProcessing } from "@/lib/push/order-ready";
 import { mapSharedOrder } from "@/lib/shared-schema";
@@ -39,11 +39,10 @@ interface CustomerOrderRow {
 
 export async function GET(req: Request, { params }: Params) {
   const { public_token } = await params;
-  const bootstrapAccess = new URL(req.url).searchParams.get("bootstrap") === "1";
 
   const { data: accessData, error: accessError } = await getSupabaseAdmin()
     .from("orders")
-    .select("id,public_token")
+    .select("id,public_token,status,payment_status,completed_at,cancelled_at")
     .eq("public_token", public_token)
     .maybeSingle();
 
@@ -58,24 +57,21 @@ export async function GET(req: Request, { params }: Params) {
     return NextResponse.json({ error: "Order not found" }, { status: 404 });
   }
 
-  const accessOrder = accessData as { id: number; public_token: string | null };
-  const hasAccess = await hasOrderAccess({
-    orderId: accessOrder.id,
-    publicToken: accessOrder.public_token
-  });
+  const accessOrder = accessData as {
+    id: number;
+    public_token: string | null;
+    status: string;
+    payment_status: string | null;
+    completed_at: string | null;
+    cancelled_at: string | null;
+  };
+  const hasAccess = await hasReadAccessToOrder(accessOrder);
 
-  if (!hasAccess && !bootstrapAccess) {
+  if (!hasAccess) {
     console.warn("order_detail_missing_access_session", {
       orderId: accessOrder.id
     });
     return NextResponse.json({ error: "Missing valid order access session." }, { status: 403 });
-  }
-
-  if (!hasAccess) {
-    await setOrderAccessCookie({
-      orderId: accessOrder.id,
-      publicToken: public_token
-    });
   }
 
   const { data, error } = await getSupabaseAdmin()
