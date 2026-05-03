@@ -44,7 +44,7 @@ function validateSameOriginMutation(request: Request) {
 async function verifyOrderLink(orderId: number) {
   const { data: order, error: orderError } = await getSupabaseAdmin()
     .from("orders")
-    .select("id,public_token,payment_status")
+    .select("id,public_token,payment_status,device_id")
     .eq("id", orderId)
     .maybeSingle();
 
@@ -56,7 +56,12 @@ async function verifyOrderLink(orderId: number) {
     return { response: NextResponse.json({ message: "Order not found." }, { status: 404 }) };
   }
 
-  const orderRow = order as { id: number; public_token: string | null; payment_status: string | null };
+  const orderRow = order as {
+    id: number;
+    public_token: string | null;
+    payment_status: string | null;
+    device_id: string | null;
+  };
   if (orderRow.payment_status !== "paid") {
     return { response: NextResponse.json({ message: "Notifications are available after payment is confirmed." }, { status: 409 }) };
   }
@@ -104,7 +109,14 @@ export async function POST(request: Request) {
     );
   }
 
-  let orderRow: { id: number; public_token: string | null; payment_status: string | null } | null = null;
+  let orderRow:
+    | {
+        id: number;
+        public_token: string | null;
+        payment_status: string | null;
+        device_id: string | null;
+      }
+    | null = null;
   if (parsed.data.orderId) {
     const orderRateLimit = await enforceRateLimit(request, "push-subscribe-order", 6, 60_000, {
       bucketSuffix: String(parsed.data.orderId)
@@ -123,13 +135,29 @@ export async function POST(request: Request) {
     orderRow = verified.order;
   }
 
+  const deviceId = parsed.data.deviceId ?? orderRow?.device_id;
+  if (!deviceId) {
+    return NextResponse.json({ message: "Missing device identifier." }, { status: 400 });
+  }
+
+  if (orderRow && orderRow.device_id !== deviceId) {
+    const { error: updateError } = await getSupabaseAdmin()
+      .from("orders")
+      .update({ device_id: deviceId })
+      .eq("id", orderRow.id);
+
+    if (updateError) {
+      return NextResponse.json({ message: "Unable to save order device reference." }, { status: 500 });
+    }
+  }
+
   const now = new Date().toISOString();
   const { data: storedSubscription, error: subscriptionError } = await getSupabaseAdmin()
     .from("push_subscriptions")
     .upsert(
       {
         endpoint: parsed.data.endpoint,
-        device_id: parsed.data.deviceId ?? null,
+        device_id: deviceId,
         p256dh: parsed.data.keys.p256dh,
         auth: parsed.data.keys.auth,
         platform: inferPlatform(request.headers.get("user-agent")),
@@ -144,25 +172,6 @@ export async function POST(request: Request) {
 
   if (subscriptionError || !storedSubscription) {
     return NextResponse.json({ message: "Unable to save push subscription." }, { status: 500 });
-  }
-
-  if (orderRow) {
-    const { error: relationError } = await getSupabaseAdmin()
-      .from("push_subscription_orders")
-      .upsert(
-        {
-          subscription_id: (storedSubscription as { id: string }).id,
-          order_id: orderRow.id
-        },
-        {
-          onConflict: "subscription_id,order_id",
-          ignoreDuplicates: true
-        }
-      );
-
-    if (relationError) {
-      return NextResponse.json({ message: "Unable to link push subscription to this order." }, { status: 500 });
-    }
   }
 
   after(async () => {

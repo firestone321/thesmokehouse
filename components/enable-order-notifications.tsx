@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { getOrCreatePushDeviceId } from "@/lib/push/device-id";
 import { urlBase64ToUint8Array } from "@/lib/push/vapid";
 
 type EnableOrderNotificationsProps = {
@@ -17,8 +18,6 @@ type PushSubscriptionWithJson = PushSubscription & {
 type NavigatorWithStandalone = Navigator & {
   standalone?: boolean;
 };
-
-const PUSH_DEVICE_ID_STORAGE_KEY = "smokehouse_push_device_id";
 
 function isIosDevice() {
   return /iphone|ipad|ipod/i.test(window.navigator.userAgent);
@@ -58,27 +57,6 @@ function subscriptionMatchesVapidKey(subscription: PushSubscription, publicKey: 
   return subscriptionKey === publicKey;
 }
 
-function createDeviceId() {
-  if (window.crypto?.randomUUID) {
-    return window.crypto.randomUUID();
-  }
-
-  const random = new Uint8Array(16);
-  window.crypto.getRandomValues(random);
-  return Array.from(random, (value) => value.toString(16).padStart(2, "0")).join("");
-}
-
-function getOrCreatePushDeviceId() {
-  const existing = window.localStorage.getItem(PUSH_DEVICE_ID_STORAGE_KEY);
-  if (existing) {
-    return existing;
-  }
-
-  const next = createDeviceId();
-  window.localStorage.setItem(PUSH_DEVICE_ID_STORAGE_KEY, next);
-  return next;
-}
-
 function buildSubscribePayload(orderId: number, subscription: PushSubscriptionWithJson) {
   return {
     ...subscription.toJSON(),
@@ -116,7 +94,7 @@ async function createOrRefreshSubscription(registration: ServiceWorkerRegistrati
   });
 }
 
-async function linkSubscriptionToOrder(orderId: number, subscription: PushSubscriptionWithJson) {
+async function enableNotificationsOnThisDevice(orderId: number, subscription: PushSubscriptionWithJson) {
   const response = await fetch("/api/push/subscribe", {
     method: "POST",
     headers: {
@@ -127,12 +105,12 @@ async function linkSubscriptionToOrder(orderId: number, subscription: PushSubscr
   const payload = (await response.json().catch(() => null)) as { message?: string } | null;
 
   if (!response.ok) {
-    throw new Error(payload?.message ?? "Unable to link notifications to this order.");
+    throw new Error(payload?.message ?? "Unable to enable notifications on this device.");
   }
 }
 
 export function EnableOrderNotifications({ orderId }: EnableOrderNotificationsProps) {
-  const [linkState, setLinkState] = useState<LinkState>("idle");
+  const [linkState, setLinkState] = useState<LinkState>("checking");
   const [permissionState, setPermissionState] = useState<SupportedPermissionState>(() =>
     getPermissionState()
   );
@@ -141,7 +119,7 @@ export function EnableOrderNotifications({ orderId }: EnableOrderNotificationsPr
   useEffect(() => {
     let cancelled = false;
 
-    async function autoLinkExistingSubscription() {
+    async function inspectDeviceSubscription() {
       const nextPermissionState = getPermissionState();
       if (cancelled) return;
 
@@ -168,33 +146,37 @@ export function EnableOrderNotifications({ orderId }: EnableOrderNotificationsPr
         }
 
         const registration = await ensureServiceWorkerRegistration();
-        const subscription = await createOrRefreshSubscription(registration, vapidPublicKey);
+        const existingSubscription = await registration.pushManager.getSubscription();
 
-        if (!cancelled) {
-          setLinkState("linking");
-          setMessage("Keeping pickup alerts active on this device...");
+        if (
+          existingSubscription
+          && subscriptionMatchesVapidKey(existingSubscription, vapidPublicKey)
+        ) {
+          if (!cancelled) {
+            setLinkState("linked");
+            setMessage(null);
+          }
+          return;
         }
 
-        await linkSubscriptionToOrder(orderId, subscription as PushSubscriptionWithJson);
-
         if (!cancelled) {
-          setLinkState("linked");
-          setMessage(null);
+          setLinkState("idle");
+          setMessage("Turn on pickup alerts for this device.");
         }
       } catch (error) {
-        console.error("order_notification_auto_link_failed", {
+        console.error("order_notification_health_check_failed", {
           orderId,
           error: error instanceof Error ? error.message : "unknown_error"
         });
 
         if (!cancelled) {
           setLinkState("error");
-          setMessage(error instanceof Error ? error.message : "Unable to link notifications to this order.");
+          setMessage(error instanceof Error ? error.message : "Unable to check notification status.");
         }
       }
     }
 
-    void autoLinkExistingSubscription();
+    void inspectDeviceSubscription();
 
     return () => {
       cancelled = true;
@@ -247,7 +229,7 @@ export function EnableOrderNotifications({ orderId }: EnableOrderNotificationsPr
       const registration = await ensureServiceWorkerRegistration();
       const subscription = await createOrRefreshSubscription(registration, vapidPublicKey);
 
-      await linkSubscriptionToOrder(orderId, subscription as PushSubscriptionWithJson);
+      await enableNotificationsOnThisDevice(orderId, subscription as PushSubscriptionWithJson);
 
       setLinkState("linked");
       setMessage(null);
@@ -265,7 +247,11 @@ export function EnableOrderNotifications({ orderId }: EnableOrderNotificationsPr
     return null;
   }
 
-  const isBusy = linkState === "checking" || linkState === "linking";
+  if (linkState === "checking") {
+    return null;
+  }
+
+  const isBusy = linkState === "linking";
   const actionLabel = permissionState === "granted" && linkState === "error"
     ? "Retry notifications"
     : "Enable notifications";
@@ -273,7 +259,8 @@ export function EnableOrderNotifications({ orderId }: EnableOrderNotificationsPr
   return (
     <div className="mt-5 rounded-md border border-[#2F6B45]/20 bg-[#F2FBF5] p-4 text-sm font-semibold leading-6 text-[#1F4F33]">
       <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#2F6B45]">Pickup alert</p>
-      <p className="mt-2 text-[#315F42]">Get a notification when staff mark this order ready.</p>
+      <p className="mt-2 text-[#315F42]">Get a notification when staff mark your order ready on this device.</p>
+      {message ? <p className="mt-2 text-[#476F54]">{message}</p> : null}
       <button
         type="button"
         onClick={() => {
@@ -282,9 +269,8 @@ export function EnableOrderNotifications({ orderId }: EnableOrderNotificationsPr
         disabled={isBusy}
         className="mt-3 rounded-md border border-[#2F6B45]/30 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#1F4F33] transition hover:bg-[#E0F2E7] disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {isBusy ? (linkState === "checking" ? "Checking" : "Linking") : actionLabel}
+        {isBusy ? "Linking" : actionLabel}
       </button>
-      {message ? <p className="mt-2 text-[#476F54]">{message}</p> : null}
     </div>
   );
 }

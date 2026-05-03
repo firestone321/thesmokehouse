@@ -135,6 +135,7 @@ export function mapSharedOrder(row: {
   id: unknown;
   order_number: unknown;
   public_token: string | null;
+  device_id?: string | null;
   pickup_code: string | null;
   customer_name: string | null;
   customer_phone: string | null;
@@ -175,6 +176,7 @@ export function mapSharedOrder(row: {
     id: toNumber(row.id),
     order_number: String(row.order_number ?? ""),
     public_token: row.public_token ?? "",
+    device_id: row.device_id ?? null,
     pickup_code: row.pickup_code ?? null,
     name: row.customer_name ?? "",
     phone: row.customer_phone ?? "",

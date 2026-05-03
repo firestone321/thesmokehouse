@@ -35,6 +35,7 @@ export interface Order {
   id: number;
   order_number: string;
   public_token: string;
+  device_id?: string | null;
   pickup_code: string | null;
   name: string;
   phone: string;

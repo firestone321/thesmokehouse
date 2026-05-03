@@ -6,6 +6,7 @@ export interface CreateOrderPayload {
   name: string;
   phone: string;
   notes?: string;
+  device_id?: string;
 }
 
 export async function getMenu(): Promise<MenuItem[]> {

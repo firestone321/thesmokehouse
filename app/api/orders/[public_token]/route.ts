@@ -15,6 +15,7 @@ interface CustomerOrderRow {
   id: number;
   order_number: string;
   public_token: string | null;
+  device_id: string | null;
   pickup_code: string | null;
   customer_name: string | null;
   customer_phone: string | null;
@@ -80,7 +81,7 @@ export async function GET(req: Request, { params }: Params) {
   const { data, error } = await getSupabaseAdmin()
     .from("orders")
     .select(
-      "id,order_number,public_token,pickup_code,customer_name,customer_phone,status,payment_status,promised_at,notes,total_amount,created_at,completed_at,cancelled_at,order_items(id,menu_item_id,menu_item_name,quantity,unit_price,menu_items(name,image_url))"
+      "id,order_number,public_token,device_id,pickup_code,customer_name,customer_phone,status,payment_status,promised_at,notes,total_amount,created_at,completed_at,cancelled_at,order_items(id,menu_item_id,menu_item_name,quantity,unit_price,menu_items(name,image_url))"
     )
     .eq("id", accessOrder.id)
     .single();

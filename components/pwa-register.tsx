@@ -181,7 +181,7 @@ export function PwaRegister() {
         onClick={reloadApp}
         className="mx-auto flex min-h-12 w-full max-w-6xl items-center justify-center px-4 py-3 text-center text-sm font-semibold sm:text-base"
       >
-        New content detected. Tap to reload.
+        Updates available. Tap to reload.
       </button>
     </div>
   );

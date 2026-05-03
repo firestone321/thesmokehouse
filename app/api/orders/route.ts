@@ -155,6 +155,7 @@ export async function POST(req: NextRequest) {
       .insert({
         public_token: generatePublicToken(),
         pickup_code: generatePickupCode(),
+        device_id: parsed.data.device_id ?? null,
         customer_name: input.name,
         customer_phone: input.phone,
         notes: input.notes || null,

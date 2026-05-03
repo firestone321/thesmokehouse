@@ -20,7 +20,14 @@ export const createOrderSchema = z.object({
     .min(7)
     .max(30)
     .regex(/^[0-9+()\-\s]+$/, "Invalid phone format"),
-  notes: z.string().trim().max(300).optional().or(z.literal(""))
+  notes: z.string().trim().max(300).optional().or(z.literal("")),
+  device_id: z
+    .string()
+    .trim()
+    .min(8)
+    .max(128)
+    .regex(/^[A-Za-z0-9_-]+$/)
+    .optional()
 });
 
 export function getClientIp(headerValue: string | null): string {

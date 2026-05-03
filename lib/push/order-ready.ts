@@ -12,6 +12,7 @@ type OrderReadyRow = {
   public_token: string | null;
   status: string | null;
   updated_at: string;
+  device_id: string | null;
 };
 
 type PushSubscriptionRow = StoredPushSubscription;
@@ -56,7 +57,7 @@ function buildOrderUrl(order: Pick<OrderReadyRow, "public_token">) {
 async function getOrderForReadyPush(orderId: number) {
   const { data, error } = await getSupabaseAdmin()
     .from("orders")
-    .select("id,public_token,status,updated_at")
+    .select("id,public_token,status,updated_at,device_id")
     .eq("id", orderId)
     .maybeSingle();
 
@@ -67,31 +68,14 @@ async function getOrderForReadyPush(orderId: number) {
   return (data as OrderReadyRow | null) ?? null;
 }
 
-async function getOrderLinkedSubscriptionIds(orderId: number) {
-  const { data, error } = await getSupabaseAdmin()
-    .from("push_subscription_orders")
-    .select("subscription_id")
-    .eq("order_id", orderId);
-
-  if (error) {
-    throw new Error(`Unable to load order-linked push subscriptions: ${error.message}`);
-  }
-
-  return ((data ?? []) as Array<{ subscription_id: string }>).map((row) => row.subscription_id);
-}
-
-async function getSubscriptionsByIds(subscriptionIds: string[]) {
-  if (subscriptionIds.length === 0) {
-    return [] as PushSubscriptionRow[];
-  }
-
+async function getDeviceSubscriptions(deviceId: string) {
   const { data, error } = await getSupabaseAdmin()
     .from("push_subscriptions")
     .select("id,endpoint,p256dh,auth,platform,user_agent")
-    .in("id", subscriptionIds);
+    .eq("device_id", deviceId);
 
   if (error) {
-    throw new Error(`Unable to load push subscriptions by id: ${error.message}`);
+    throw new Error(`Unable to load device push subscriptions: ${error.message}`);
   }
 
   return (data as PushSubscriptionRow[] | null) ?? [];
@@ -217,10 +201,17 @@ async function listDuePushDispatchIdempotencyKeys(limit: number) {
 }
 
 async function resolveSubscriptionsForOrder(orderId: number) {
-  const orderLinkedIds = await getOrderLinkedSubscriptionIds(orderId);
-  const subscriptions = await getSubscriptionsByIds(orderLinkedIds);
+  const order = await getOrderForReadyPush(orderId);
+  if (!order) {
+    return [] as PushSubscriptionRow[];
+  }
 
-  return [...new Map(subscriptions.map((subscription) => [subscription.endpoint, subscription])).values()];
+  if (!order.device_id) {
+    return [] as PushSubscriptionRow[];
+  }
+
+  const deviceSubscriptions = await getDeviceSubscriptions(order.device_id);
+  return [...new Map(deviceSubscriptions.map((subscription) => [subscription.endpoint, subscription])).values()];
 }
 
 export async function processOrderReadyPushDispatch(idempotencyKey: string) {
@@ -237,10 +228,6 @@ export async function processOrderReadyPushDispatch(idempotencyKey: string) {
 
     if (!isReadyOrder(order)) {
       throw new PushTriggerError("Order is not in Ready status.");
-    }
-
-    if (order.updated_at !== dispatch.order_updated_at) {
-      throw new PushTriggerError("Order updated_at does not match the Ready transition.");
     }
 
     const subscriptions = await resolveSubscriptionsForOrder(order.id);

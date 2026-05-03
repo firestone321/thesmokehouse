@@ -5,6 +5,7 @@ import { useCartStore } from "@/lib/store";
 import { createOrder } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
 import { rememberGuestOrder } from "@/lib/guest-order";
+import { getOrCreatePushDeviceId } from "@/lib/push/device-id";
 import { useCartHydration } from "@/lib/use-cart-hydration";
 
 export function CheckoutForm() {
@@ -40,7 +41,8 @@ export function CheckoutForm() {
         pickup_time: pickupTime,
         name: name.trim(),
         phone: phone.trim(),
-        notes: notes.trim()
+        notes: notes.trim(),
+        device_id: getOrCreatePushDeviceId()
       });
 
       rememberGuestOrder(result.public_token);
