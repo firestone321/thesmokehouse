@@ -17,6 +17,9 @@ export function SiteFooter() {
           <Link href="/cart" className="font-semibold text-[var(--foreground)] hover:text-[var(--accent)]">
             Cart
           </Link>
+          <Link href="/contact" className="font-semibold text-[var(--foreground)] hover:text-[var(--accent)]">
+            Contact
+          </Link>
           <Link href="/offline" className="font-semibold text-[var(--foreground)] hover:text-[var(--accent)]">
             Offline
           </Link>

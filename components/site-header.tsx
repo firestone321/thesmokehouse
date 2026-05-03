@@ -6,11 +6,12 @@ import { usePathname } from "next/navigation";
 import { useEffect, useId, useState } from "react";
 import { ThemeToggle } from "@/components/theme-toggle";
 
-const links: Array<{ href: "/" | "/order" | "/cart" | "/checkout"; label: string; description: string }> = [
+const links: Array<{ href: "/" | "/order" | "/cart" | "/checkout" | "/contact"; label: string; description: string }> = [
   { href: "/", label: "Menu", description: "Smoked proteins, sides, and drinks" },
   { href: "/order", label: "Current Order", description: "Reopen your pickup code or receipt" },
   { href: "/cart", label: "Cart", description: "Review this device's order" },
-  { href: "/checkout", label: "Checkout", description: "Pay and lock in pickup" }
+  { href: "/checkout", label: "Checkout", description: "Pay and lock in pickup" },
+  { href: "/contact", label: "Contact", description: "Phone, WhatsApp, and directions" }
 ];
 
 function isActive(pathname: string, href: string) {
