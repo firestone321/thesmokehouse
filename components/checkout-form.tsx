@@ -61,8 +61,8 @@ export function CheckoutForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-      <div className="space-y-4 rounded-2xl border border-[#C3C5C1] bg-[#F7F7F4] p-5 shadow-card">
+    <form onSubmit={onSubmit} className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      <div className="min-w-0 space-y-4 rounded-2xl border border-[#C3C5C1] bg-[#F7F7F4] p-5 shadow-card">
         <h2 className="text-xl font-bold text-[#30241F]">Guest Checkout</h2>
 
         <label className="block text-sm font-semibold text-[#30241F]">
@@ -99,22 +99,22 @@ export function CheckoutForm() {
         {error ? <p className="rounded-lg bg-[#E5D8D4] px-3 py-2 text-sm font-semibold text-[#6A3025]">{error}</p> : null}
       </div>
 
-      <aside className="h-fit rounded-2xl border border-[#C3C5C1] bg-[#F7F7F4] p-5 shadow-card lg:sticky lg:top-6">
+      <aside className="h-fit min-w-0 rounded-2xl border border-[#C3C5C1] bg-[#F7F7F4] p-5 shadow-card lg:sticky lg:top-6">
         <h3 className="text-lg font-bold text-[#30241F]">Order Summary</h3>
         <p className="mt-1 text-sm text-[#666A67]">{safeItems.length} line items</p>
         <ul className="mt-3 space-y-2 text-sm text-[#424440]">
           {safeItems.map((item) => (
-            <li key={item.menu_item_id} className="flex justify-between gap-4">
-              <span>
+            <li key={item.menu_item_id} className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+              <span className="min-w-0 break-words">
                 {item.qty}x {item.name}
               </span>
-              <span>{formatCurrency(item.qty * item.price)}</span>
+              <span className="shrink-0">{formatCurrency(item.qty * item.price)}</span>
             </li>
           ))}
         </ul>
-        <div className="mt-4 flex items-center justify-between border-t border-[#C9CAC7] pt-3">
+        <div className="mt-4 flex items-start justify-between gap-3 border-t border-[#C9CAC7] pt-3">
           <span className="font-semibold text-[#30241F]">Total</span>
-          <span className="text-xl font-bold text-[#30241F]">{formatCurrency(safeTotal)}</span>
+          <span className="shrink-0 text-xl font-bold text-[#30241F]">{formatCurrency(safeTotal)}</span>
         </div>
         <button type="submit" disabled={disabled} className="btn-primary mt-4 w-full rounded-xl px-4 py-3 text-sm font-semibold">
           {submitting ? "Preparing Payment..." : "Pay with Pesapal"}

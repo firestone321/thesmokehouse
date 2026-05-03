@@ -202,10 +202,10 @@ export function PaymentResultView() {
   }, [error, isLoading, order?.viewState, pollAttempts, token]);
 
   return (
-    <main className="bg-[#F4EFE6]">
+    <main className="overflow-x-clip bg-[#F4EFE6]">
       <section className="border-b border-[#2B211B]/10 bg-[#1C1410] text-[#FFF7EC]">
-        <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 md:grid-cols-[minmax(0,1fr)_360px] md:items-end md:px-8 md:py-14">
-          <div>
+        <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 md:grid-cols-[minmax(0,1fr)_minmax(0,360px)] md:items-end md:px-8 md:py-14">
+          <div className="min-w-0">
             <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#E6B36B]">{styles.eyebrow}</p>
             <h1 className="mt-3 font-heading text-5xl leading-none tracking-normal text-[#F8E6C8] md:text-7xl">{title}</h1>
             <p className="mt-4 max-w-2xl text-base font-semibold leading-7 text-[#D8C4AA]">
@@ -225,11 +225,11 @@ export function PaymentResultView() {
       </section>
 
       <section className="px-4 py-8 md:px-8">
-        <div className="mx-auto grid max-w-7xl gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
-          <section className={`rounded-md border p-5 shadow-[0_20px_50px_rgba(42,33,26,0.1)] ${styles.panel}`}>
-            <div className="flex items-start gap-4">
+        <div className="mx-auto grid max-w-7xl gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,380px)]">
+          <section className={`min-w-0 rounded-md border p-5 shadow-[0_20px_50px_rgba(42,33,26,0.1)] ${styles.panel}`}>
+            <div className="flex min-w-0 items-start gap-4">
               <span className={`mt-1 h-4 w-4 shrink-0 rounded-full ${styles.marker}`} />
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#6A5647]">Payment status</p>
                 <h2 className={`mt-2 text-2xl font-black uppercase tracking-wide ${styles.title}`}>
                   {isLoading ? "Checking payment" : error ? "Status unavailable" : formatPaymentStatus(order?.paymentStatus ?? "pending")}
@@ -269,9 +269,9 @@ export function PaymentResultView() {
                 </div>
                 <ul className="mt-3 divide-y divide-[#2B211B]/10 text-sm font-semibold text-[#4A3A30]">
                   {order.items.map((item) => (
-                    <li key={item.name} className="flex justify-between gap-4 py-2">
-                      <span>{item.name}</span>
-                      <span>x{item.quantity}</span>
+                    <li key={item.name} className="flex flex-col gap-1 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                      <span className="min-w-0 break-words">{item.name}</span>
+                      <span className="shrink-0">x{item.quantity}</span>
                     </li>
                   ))}
                 </ul>
@@ -279,7 +279,7 @@ export function PaymentResultView() {
             ) : null}
           </section>
 
-          <aside className="h-fit rounded-md border border-[#2B211B]/10 bg-[#FFF8EF] p-5 shadow-[0_20px_50px_rgba(42,33,26,0.1)] lg:sticky lg:top-24">
+          <aside className="h-fit min-w-0 rounded-md border border-[#2B211B]/10 bg-[#FFF8EF] p-5 shadow-[0_20px_50px_rgba(42,33,26,0.1)] lg:sticky lg:top-24">
             <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#8A6246]">Next move</p>
             <div className="mt-4 space-y-3">
               {order ? (

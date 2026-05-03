@@ -15,12 +15,12 @@ export const metadata: Metadata = {
 
 export default function CheckoutPage() {
   return (
-    <div className="min-h-screen bg-[#ECECEA]">
+    <div className="min-h-screen overflow-x-clip bg-[#ECECEA]">
       <SiteHeader />
       <main>
         <section className="border-b border-[#242321]/12 bg-[#24201D] text-[#EEEEEA] shadow-[inset_0_-1px_0_rgba(238,238,232,0.04)]">
           <div className="mx-auto flex max-w-7xl flex-col gap-5 px-4 py-10 md:flex-row md:items-end md:justify-between md:px-8">
-            <div>
+            <div className="min-w-0">
               <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#A66B55]">Secure payment</p>
               <h1 className="mt-3 font-heading text-5xl leading-none tracking-normal text-[#F0F0EC] md:text-6xl">CHECKOUT</h1>
               <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-[#C9CBC7]">
