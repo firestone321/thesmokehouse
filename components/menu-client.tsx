@@ -20,8 +20,8 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
   const total = useCartStore((s) => s.total);
   const hydrated = useCartHydration();
 
-  const addonItems = useMemo(() => items.filter((item) => item.category === "sides" || item.category === "drinks"), [items]);
-  const storefrontItems = useMemo(() => items.filter((item) => item.category !== "sides" && item.category !== "drinks"), [items]);
+  const addonItems = useMemo(() => items.filter((item) => item.category === "drinks"), [items]);
+  const storefrontItems = useMemo(() => items.filter((item) => item.category !== "drinks"), [items]);
 
   const availableCategories = useMemo(
     () =>
@@ -54,7 +54,12 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
   const safeCount = hydrated ? count() : 0;
   const cartTotal = hydrated ? total() : 0;
   const addonIdsInCart = useMemo(
-    () => new Set(safeCartItems.filter((item) => addonItems.some((addon) => addon.id === item.menu_item_id)).map((item) => item.menu_item_id)),
+    () =>
+      new Set(
+        safeCartItems
+          .filter((item) => addonItems.some((addon) => addon.id === item.menu_item_id))
+          .map((item) => item.menu_item_id)
+      ),
     [addonItems, safeCartItems]
   );
 
@@ -135,7 +140,7 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
 
                     {addonItems.length > 0 ? (
                       <div className="mt-3 border-t border-[#e4d0b9] pt-3">
-                        <p className="text-xs font-black uppercase tracking-wide text-[#6a4d38]">Add sides and drinks</p>
+                        <p className="text-xs font-black uppercase tracking-wide text-[#6a4d38]">Add drinks</p>
                         <div className="mt-2 space-y-2">
                           {addonItems.map((addon) => {
                             const checked = addonIdsInCart.has(addon.id);
