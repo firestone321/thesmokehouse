@@ -4,13 +4,14 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useCartStore } from "@/lib/store";
-import { formatCurrency, formatPaymentStatus, formatStatus } from "@/lib/format";
+import { formatCurrency, formatDateTimeInKampala, formatPaymentStatus, formatStatus } from "@/lib/format";
 import { rememberGuestOrder } from "@/lib/guest-order";
 
 type PaymentResultOrder = {
   publicToken: string;
   orderNumber: string;
   customerName: string;
+  createdAt: string;
   orderStatus: string;
   pickupCode: string | null;
   totalUGX: number;
@@ -245,6 +246,10 @@ export function PaymentResultView() {
                 <div className="rounded-md border border-[#2B211B]/10 bg-white/70 p-4">
                   <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8A6246]">Order number</p>
                   <p className="mt-2 text-2xl font-black text-[#2A211A]">#{order.orderNumber}</p>
+                </div>
+                <div className="rounded-md border border-[#2B211B]/10 bg-white/70 p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8A6246]">Placed at</p>
+                  <p className="mt-2 text-lg font-black text-[#2A211A]">{formatDateTimeInKampala(order.createdAt)}</p>
                 </div>
                 <div className="rounded-md border border-[#2B211B]/10 bg-white/70 p-4">
                   <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8A6246]">Total</p>

@@ -69,6 +69,7 @@ export type OrderPaymentSnapshot = {
   publicToken: string;
   orderNumber: string;
   customerName: string;
+  createdAt: string;
   orderStatus: string;
   pickupCode: string | null;
   totalUGX: number;
@@ -211,6 +212,7 @@ function buildSnapshot(row: OrderPaymentRow, options?: { verified?: boolean; hin
     publicToken: row.public_token,
     orderNumber: row.order_number,
     customerName: row.customer_name ?? "Customer",
+    createdAt: row.created_at,
     orderStatus: row.status,
     pickupCode: row.pickup_code ?? null,
     totalUGX: row.total_amount,

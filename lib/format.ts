@@ -6,6 +6,22 @@ export function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
+export function formatDateTimeInKampala(value: string | Date): string {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "Unknown time";
+  }
+
+  return `${new Intl.DateTimeFormat("en-UG", {
+    timeZone: "Africa/Kampala",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(date)} EAT`;
+}
+
 export function formatStatus(status: string): string {
   return status.replace("_", " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
