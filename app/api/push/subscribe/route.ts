@@ -1,6 +1,7 @@
 import { after, NextResponse } from "next/server";
 import { z } from "zod";
-import { hasOrderAccess } from "@/lib/order-access";
+import { ensureGuestDeviceSession } from "@/lib/guest-device";
+import { clearOrderAccessCookie, resolveOrderReadAccess } from "@/lib/order-access";
 import { scheduleDueOrderReadyPushProcessing } from "@/lib/push/order-ready";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { isContentLengthTooLarge } from "@/lib/request-limits";
@@ -44,7 +45,7 @@ function validateSameOriginMutation(request: Request) {
 async function verifyOrderLink(orderId: number) {
   const { data: order, error: orderError } = await getSupabaseAdmin()
     .from("orders")
-    .select("id,public_token,payment_status,device_id")
+    .select("id,public_token,payment_status,device_id,status,completed_at,cancelled_at")
     .eq("id", orderId)
     .maybeSingle();
 
@@ -61,18 +62,21 @@ async function verifyOrderLink(orderId: number) {
     public_token: string | null;
     payment_status: string | null;
     device_id: string | null;
+    status: string;
+    completed_at: string | null;
+    cancelled_at: string | null;
   };
   if (orderRow.payment_status !== "paid") {
     return { response: NextResponse.json({ message: "Notifications are available after payment is confirmed." }, { status: 409 }) };
   }
 
-  const hasAccess = await hasOrderAccess({
-    orderId: orderRow.id,
-    publicToken: orderRow.public_token
-  });
+  const access = await resolveOrderReadAccess(orderRow);
 
-  if (!hasAccess) {
-    return { response: NextResponse.json({ message: "Missing valid order access session." }, { status: 403 }) };
+  if (!access.allowed) {
+    if (access.clearOrderAccessCookie) {
+      await clearOrderAccessCookie();
+    }
+    return { response: NextResponse.json({ message: access.message }, { status: access.status }) };
   }
 
   return { order: orderRow };
@@ -135,7 +139,8 @@ export async function POST(request: Request) {
     orderRow = verified.order;
   }
 
-  const deviceId = parsed.data.deviceId ?? orderRow?.device_id;
+  const guestDevice = await ensureGuestDeviceSession();
+  const deviceId = guestDevice.deviceId;
   if (!deviceId) {
     return NextResponse.json({ message: "Missing device identifier." }, { status: 400 });
   }

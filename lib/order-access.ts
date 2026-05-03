@@ -2,6 +2,7 @@ import "server-only";
 
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
+import { getGuestDeviceSession } from "@/lib/guest-device";
 
 const ORDER_ACCESS_COOKIE_NAME = "smokehouse_order_session";
 const ORDER_ACCESS_MAX_AGE_SECONDS = 24 * 60 * 60;
@@ -10,6 +11,7 @@ const RECEIPT_REOPEN_WINDOW_MS = 24 * 60 * 60 * 1000;
 type OrderSessionPayload = {
   orderId: number;
   publicToken: string;
+  deviceId?: string;
   issuedAt: number;
   expiresAt: number;
   sessionVersion?: number;
@@ -18,6 +20,7 @@ type OrderSessionPayload = {
 type OrderReadAccessTarget = {
   id: number;
   public_token: string | null;
+  device_id?: string | null;
   status: string;
   payment_status?: string | null;
   completed_at?: string | null;
@@ -70,6 +73,7 @@ function parseOrderAccessToken(token: string): OrderSessionPayload | null {
     if (
       typeof payload.orderId !== "number"
       || typeof payload.publicToken !== "string"
+      || (payload.deviceId !== undefined && typeof payload.deviceId !== "string")
       || typeof payload.issuedAt !== "number"
       || typeof payload.expiresAt !== "number"
     ) {
@@ -89,6 +93,7 @@ function parseOrderAccessToken(token: string): OrderSessionPayload | null {
 export async function setOrderAccessCookie(input: {
   orderId: number;
   publicToken: string;
+  deviceId?: string;
   maxAgeSeconds?: number;
   sessionVersion?: number;
 }) {
@@ -98,6 +103,7 @@ export async function setOrderAccessCookie(input: {
   const token = createOrderAccessToken({
     orderId: input.orderId,
     publicToken: input.publicToken,
+    deviceId: input.deviceId?.trim() || undefined,
     issuedAt: now,
     expiresAt: now + maxAgeSeconds,
     sessionVersion: input.sessionVersion ?? 1,
@@ -153,6 +159,17 @@ export async function hasOrderAccess(input: {
   );
 }
 
+type OrderReadAccessDecision =
+  | {
+      allowed: true;
+    }
+  | {
+      allowed: false;
+      status: number;
+      message: string;
+      clearOrderAccessCookie: boolean;
+    };
+
 function isWithinReceiptWindow(completedAt: string | null | undefined) {
   if (!completedAt) {
     return false;
@@ -166,28 +183,71 @@ function isWithinReceiptWindow(completedAt: string | null | undefined) {
   return Date.now() - completedAtMs <= RECEIPT_REOPEN_WINDOW_MS;
 }
 
-export async function hasReadAccessToOrder(input: OrderReadAccessTarget) {
-  const hasAccess = await hasOrderAccess({
-    orderId: input.id,
-    publicToken: input.public_token
-  });
+function getDeviceBindingFailure(message: string): OrderReadAccessDecision {
+  return {
+    allowed: false,
+    status: 409,
+    message,
+    clearOrderAccessCookie: true
+  };
+}
 
-  if (!hasAccess) {
-    return false;
+export async function resolveOrderReadAccess(input: OrderReadAccessTarget): Promise<OrderReadAccessDecision> {
+  const payload = await getOrderAccessSession();
+  if (!payload) {
+    return {
+      allowed: false,
+      status: 401,
+      message: "Missing valid order access session.",
+      clearOrderAccessCookie: false
+    };
+  }
+
+  if (payload.orderId !== input.id || (input.public_token && payload.publicToken !== input.public_token)) {
+    return {
+      allowed: false,
+      status: 403,
+      message: "Missing valid order access session.",
+      clearOrderAccessCookie: true
+    };
   }
 
   const normalizedStatus = input.status.trim().toLowerCase();
   const normalizedPaymentStatus = input.payment_status?.trim().toLowerCase() ?? "";
 
   if (normalizedStatus === "cancelled" || normalizedPaymentStatus === "cancelled" || normalizedPaymentStatus === "failed") {
-    return false;
+    return {
+      allowed: false,
+      status: 403,
+      message: "This order is no longer available on this device.",
+      clearOrderAccessCookie: true
+    };
   }
 
-  if (normalizedStatus === "completed") {
-    return isWithinReceiptWindow(input.completed_at);
+  if (normalizedStatus === "completed" && !isWithinReceiptWindow(input.completed_at)) {
+    return {
+      allowed: false,
+      status: 403,
+      message: "This receipt window has expired on this device.",
+      clearOrderAccessCookie: true
+    };
   }
 
-  return true;
+  const guestDevice = await getGuestDeviceSession();
+  if (!guestDevice?.deviceId || !payload.deviceId || !input.device_id) {
+    return getDeviceBindingFailure("This order can only be reopened on the device that placed it.");
+  }
+
+  if (guestDevice.deviceId !== payload.deviceId || guestDevice.deviceId !== input.device_id) {
+    return getDeviceBindingFailure("This order can only be reopened on the device that placed it.");
+  }
+
+  return { allowed: true };
+}
+
+export async function hasReadAccessToOrder(input: OrderReadAccessTarget) {
+  const result = await resolveOrderReadAccess(input);
+  return result.allowed;
 }
 
 function getRemainingReceiptWindowSeconds(completedAt: string | null | undefined) {
@@ -209,7 +269,8 @@ function getRemainingReceiptWindowSeconds(completedAt: string | null | undefined
 }
 
 export async function syncOrderAccessCookie(input: OrderReadAccessTarget) {
-  if (!(await hasReadAccessToOrder(input))) {
+  const result = await resolveOrderReadAccess(input);
+  if (!result.allowed) {
     await clearOrderAccessCookie();
     return false;
   }
@@ -234,6 +295,7 @@ export async function syncOrderAccessCookie(input: OrderReadAccessTarget) {
   await setOrderAccessCookie({
     orderId: input.id,
     publicToken: input.public_token,
+    deviceId: input.device_id?.trim() || undefined,
     maxAgeSeconds: maxAgeSeconds ?? ORDER_ACCESS_MAX_AGE_SECONDS
   });
 

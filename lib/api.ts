@@ -38,10 +38,12 @@ export async function createOrder(payload: CreateOrderPayload): Promise<{
 
 export async function getCurrentOrder(): Promise<Order> {
   const res = await fetch("/api/orders/current", { cache: "no-store" });
-  if (!res.ok) throw new Error("Current order session unavailable");
   const payload = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error(payload?.error ?? payload?.message ?? "Current order session unavailable");
+  }
   if (!payload?.ok || !payload.order) {
-    throw new Error("Current order session unavailable");
+    throw new Error(payload?.error ?? payload?.message ?? "Current order session unavailable");
   }
 
   return payload.order as Order;
@@ -51,6 +53,7 @@ export async function getOrderByPublicToken(
   publicToken: string
 ): Promise<Order> {
   const res = await fetch(`/api/orders/${publicToken}`, { cache: "no-store" });
-  if (!res.ok) throw new Error("Order not found");
-  return res.json();
+  const payload = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(payload?.error ?? payload?.message ?? "Order not found");
+  return payload;
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getOrCreatePushDeviceId } from "@/lib/push/device-id";
 import { urlBase64ToUint8Array } from "@/lib/push/vapid";
 
 type EnableOrderNotificationsProps = {
@@ -60,8 +59,7 @@ function subscriptionMatchesVapidKey(subscription: PushSubscription, publicKey: 
 function buildSubscribePayload(orderId: number, subscription: PushSubscriptionWithJson) {
   return {
     ...subscription.toJSON(),
-    orderId,
-    deviceId: getOrCreatePushDeviceId()
+    orderId
   };
 }
 

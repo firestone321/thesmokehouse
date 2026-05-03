@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { clearOrderAccessCookie, getOrderAccessSession, syncOrderAccessCookie } from "@/lib/order-access";
+import { clearOrderAccessCookie, getOrderAccessSession, resolveOrderReadAccess, syncOrderAccessCookie } from "@/lib/order-access";
 import { mapSharedOrder } from "@/lib/shared-schema";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
@@ -57,23 +57,36 @@ export async function GET() {
   }
 
   const order = data as unknown as CurrentOrderRow;
-  if (order.public_token !== session.publicToken) {
-    await clearOrderAccessCookie();
-    return NextResponse.json({ error: "Missing valid order access session." }, { status: 403 });
-  }
-
-  const refreshed = await syncOrderAccessCookie({
+  const access = await resolveOrderReadAccess({
     id: order.id,
     public_token: order.public_token,
+    device_id: order.device_id,
     status: order.status,
     payment_status: order.payment_status,
     completed_at: order.completed_at,
     cancelled_at: order.cancelled_at
   });
 
-  if (!refreshed) {
-    return NextResponse.json({ error: "Your order session expired." }, { status: 403 });
+  if (!access.allowed) {
+    if (access.clearOrderAccessCookie) {
+      await clearOrderAccessCookie();
+    }
+
+    return NextResponse.json(
+      { error: access.message },
+      { status: access.status }
+    );
   }
+
+  await syncOrderAccessCookie({
+    id: order.id,
+    public_token: order.public_token,
+    device_id: order.device_id,
+    status: order.status,
+    payment_status: order.payment_status,
+    completed_at: order.completed_at,
+    cancelled_at: order.cancelled_at
+  });
 
   return NextResponse.json({ ok: true, order: mapSharedOrder(order) });
 }

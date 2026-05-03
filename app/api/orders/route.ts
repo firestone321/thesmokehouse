@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loadSellableStockMaps, resolveStockForPortion } from "@/lib/menu-stock";
 import { getUgandaServiceDate } from "@/lib/menu-stock";
+import { ensureGuestDeviceSession } from "@/lib/guest-device";
 import { setOrderAccessCookie } from "@/lib/order-access";
 import { generatePickupCode, generatePublicToken } from "@/lib/order-utils";
 import {
@@ -148,6 +149,7 @@ export async function POST(req: NextRequest) {
 
   const promisedAt = pickupSelectionToPromisedAt(input.pickup_time);
   const serviceDate = getUgandaServiceDate(promisedAt ? new Date(promisedAt) : new Date());
+  const guestDevice = await ensureGuestDeviceSession();
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const { data: createdOrder, error: orderError } = await getSupabaseAdmin()
@@ -155,7 +157,7 @@ export async function POST(req: NextRequest) {
       .insert({
         public_token: generatePublicToken(),
         pickup_code: generatePickupCode(),
-        device_id: parsed.data.device_id ?? null,
+        device_id: guestDevice.deviceId,
         customer_name: input.name,
         customer_phone: input.phone,
         notes: input.notes || null,
@@ -209,7 +211,8 @@ export async function POST(req: NextRequest) {
       });
       await setOrderAccessCookie({
         orderId: orderRow.id,
-        publicToken: orderRow.public_token
+        publicToken: orderRow.public_token,
+        deviceId: guestDevice.deviceId
       });
 
       return NextResponse.json({
@@ -232,7 +235,8 @@ export async function POST(req: NextRequest) {
         });
         await setOrderAccessCookie({
           orderId: orderRow.id,
-          publicToken: orderRow.public_token
+          publicToken: orderRow.public_token,
+          deviceId: guestDevice.deviceId
         });
 
         return NextResponse.json({

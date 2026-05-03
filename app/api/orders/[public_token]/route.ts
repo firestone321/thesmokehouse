@@ -1,5 +1,5 @@
 import { after, NextResponse } from "next/server";
-import { clearOrderAccessCookie, hasReadAccessToOrder, syncOrderAccessCookie } from "@/lib/order-access";
+import { clearOrderAccessCookie, resolveOrderReadAccess, syncOrderAccessCookie } from "@/lib/order-access";
 import { scheduleDuePendingPaymentRecovery } from "@/lib/payments/order-payments";
 import { scheduleDueOrderReadyPushProcessing } from "@/lib/push/order-ready";
 import { mapSharedOrder } from "@/lib/shared-schema";
@@ -42,7 +42,7 @@ export async function GET(req: Request, { params }: Params) {
 
   const { data: accessData, error: accessError } = await getSupabaseAdmin()
     .from("orders")
-    .select("id,public_token,status,payment_status,completed_at,cancelled_at")
+    .select("id,public_token,device_id,status,payment_status,completed_at,cancelled_at")
     .eq("public_token", public_token)
     .maybeSingle();
 
@@ -60,20 +60,22 @@ export async function GET(req: Request, { params }: Params) {
   const accessOrder = accessData as {
     id: number;
     public_token: string | null;
+    device_id: string | null;
     status: string;
     payment_status: string | null;
     completed_at: string | null;
     cancelled_at: string | null;
   };
-  const hasAccess = await hasReadAccessToOrder(accessOrder);
+  const access = await resolveOrderReadAccess(accessOrder);
 
-  if (!hasAccess) {
-    await clearOrderAccessCookie();
+  if (!access.allowed) {
+    if (access.clearOrderAccessCookie) {
+      await clearOrderAccessCookie();
+    }
     console.warn("order_detail_missing_access_session", {
       orderId: accessOrder.id
     });
-    await syncOrderAccessCookie(accessOrder);
-    return NextResponse.json({ error: "Missing valid order access session." }, { status: 403 });
+    return NextResponse.json({ error: access.message }, { status: access.status });
   }
 
   await syncOrderAccessCookie(accessOrder);

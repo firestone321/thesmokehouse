@@ -37,14 +37,16 @@ export default function LastGuestOrderPage() {
       } catch (error) {
         if (active) {
           const rememberedToken = getRememberedGuestOrderToken();
+          const fallbackMessage = error instanceof Error ? error.message : "There is no active pickup order saved on this device.";
+
           if (rememberedToken) {
             setState("expired");
-            setMessage("A recent order is remembered on this device, but the secure order session is unavailable or expired.");
+            setMessage(fallbackMessage);
             return;
           }
 
           setState("empty");
-          setMessage(error instanceof Error ? error.message : "There is no active pickup order saved on this device.");
+          setMessage(fallbackMessage);
         }
       }
     }
