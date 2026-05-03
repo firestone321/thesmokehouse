@@ -1,5 +1,5 @@
 import { after, NextResponse } from "next/server";
-import { hasReadAccessToOrder } from "@/lib/order-access";
+import { clearOrderAccessCookie, hasReadAccessToOrder, syncOrderAccessCookie } from "@/lib/order-access";
 import { scheduleDuePendingPaymentRecovery } from "@/lib/payments/order-payments";
 import { scheduleDueOrderReadyPushProcessing } from "@/lib/push/order-ready";
 import { mapSharedOrder } from "@/lib/shared-schema";
@@ -68,11 +68,15 @@ export async function GET(req: Request, { params }: Params) {
   const hasAccess = await hasReadAccessToOrder(accessOrder);
 
   if (!hasAccess) {
+    await clearOrderAccessCookie();
     console.warn("order_detail_missing_access_session", {
       orderId: accessOrder.id
     });
+    await syncOrderAccessCookie(accessOrder);
     return NextResponse.json({ error: "Missing valid order access session." }, { status: 403 });
   }
+
+  await syncOrderAccessCookie(accessOrder);
 
   const { data, error } = await getSupabaseAdmin()
     .from("orders")

@@ -3,15 +3,16 @@ import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 
-const ORDER_ACCESS_COOKIE_PREFIX = "smokehouse_order_access";
-const ORDER_ACCESS_MAX_AGE_SECONDS = 60 * 60 * 72;
+const ORDER_ACCESS_COOKIE_NAME = "smokehouse_order_session";
+const ORDER_ACCESS_MAX_AGE_SECONDS = 24 * 60 * 60;
 const RECEIPT_REOPEN_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-type OrderAccessPayload = {
+type OrderSessionPayload = {
   orderId: number;
   publicToken: string;
-  iat: number;
-  exp: number;
+  issuedAt: number;
+  expiresAt: number;
+  sessionVersion?: number;
 };
 
 type OrderReadAccessTarget = {
@@ -51,35 +52,31 @@ function safeEqual(left: string, right: string) {
   return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-function getCookieName(orderId: number) {
-  return `${ORDER_ACCESS_COOKIE_PREFIX}_${orderId}`;
-}
-
-function createOrderAccessToken(payload: OrderAccessPayload) {
+function createOrderAccessToken(payload: OrderSessionPayload) {
   const encodedPayload = encodeBase64Url(JSON.stringify(payload));
   const signature = sign(encodedPayload);
 
   return `${encodedPayload}.${signature}`;
 }
 
-function parseOrderAccessToken(token: string): OrderAccessPayload | null {
+function parseOrderAccessToken(token: string): OrderSessionPayload | null {
   const [encodedPayload, signature] = token.split(".");
   if (!encodedPayload || !signature || !safeEqual(signature, sign(encodedPayload))) {
     return null;
   }
 
   try {
-    const payload = JSON.parse(decodeBase64Url(encodedPayload)) as OrderAccessPayload;
+    const payload = JSON.parse(decodeBase64Url(encodedPayload)) as OrderSessionPayload;
     if (
       typeof payload.orderId !== "number"
       || typeof payload.publicToken !== "string"
-      || typeof payload.iat !== "number"
-      || typeof payload.exp !== "number"
+      || typeof payload.issuedAt !== "number"
+      || typeof payload.expiresAt !== "number"
     ) {
       return null;
     }
 
-    if (payload.exp < Math.floor(Date.now() / 1000)) {
+    if (payload.expiresAt < Math.floor(Date.now() / 1000)) {
       return null;
     }
 
@@ -92,36 +89,60 @@ function parseOrderAccessToken(token: string): OrderAccessPayload | null {
 export async function setOrderAccessCookie(input: {
   orderId: number;
   publicToken: string;
+  maxAgeSeconds?: number;
+  sessionVersion?: number;
 }) {
   const now = Math.floor(Date.now() / 1000);
+  const maxAgeSeconds = input.maxAgeSeconds ?? ORDER_ACCESS_MAX_AGE_SECONDS;
   const cookieStore = await cookies();
   const token = createOrderAccessToken({
     orderId: input.orderId,
     publicToken: input.publicToken,
-    iat: now,
-    exp: now + ORDER_ACCESS_MAX_AGE_SECONDS,
+    issuedAt: now,
+    expiresAt: now + maxAgeSeconds,
+    sessionVersion: input.sessionVersion ?? 1,
   });
 
-  cookieStore.set(getCookieName(input.orderId), token, {
+  cookieStore.set(ORDER_ACCESS_COOKIE_NAME, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: ORDER_ACCESS_MAX_AGE_SECONDS,
+    maxAge: maxAgeSeconds,
   });
+}
+
+export async function clearOrderAccessCookie() {
+  const cookieStore = await cookies();
+  cookieStore.delete(ORDER_ACCESS_COOKIE_NAME);
+}
+
+export async function getOrderAccessSession() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(ORDER_ACCESS_COOKIE_NAME)?.value;
+  if (!token) {
+    return null;
+  }
+
+  const payload = parseOrderAccessToken(token);
+  if (!payload) {
+    await clearOrderAccessCookie();
+    return null;
+  }
+
+  if (payload.expiresAt < Math.floor(Date.now() / 1000)) {
+    await clearOrderAccessCookie();
+    return null;
+  }
+
+  return payload;
 }
 
 export async function hasOrderAccess(input: {
   orderId: number;
   publicToken?: string | null;
 }) {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(getCookieName(input.orderId))?.value;
-  if (!token) {
-    return false;
-  }
-
-  const payload = parseOrderAccessToken(token);
+  const payload = await getOrderAccessSession();
   if (!payload) {
     return false;
   }
@@ -164,6 +185,61 @@ export async function hasReadAccessToOrder(input: OrderReadAccessTarget) {
 
   if (normalizedStatus === "completed") {
     return isWithinReceiptWindow(input.completed_at);
+  }
+
+  return true;
+}
+
+function getRemainingReceiptWindowSeconds(completedAt: string | null | undefined) {
+  if (!completedAt) {
+    return null;
+  }
+
+  const completedAtMs = Date.parse(completedAt);
+  if (!Number.isFinite(completedAtMs)) {
+    return null;
+  }
+
+  const remainingMs = RECEIPT_REOPEN_WINDOW_MS - (Date.now() - completedAtMs);
+  if (remainingMs <= 0) {
+    return 0;
+  }
+
+  return Math.max(1, Math.ceil(remainingMs / 1000));
+}
+
+export async function syncOrderAccessCookie(input: OrderReadAccessTarget) {
+  if (!(await hasReadAccessToOrder(input))) {
+    await clearOrderAccessCookie();
+    return false;
+  }
+
+  if (!input.public_token) {
+    await clearOrderAccessCookie();
+    return false;
+  }
+
+  const normalizedStatus = input.status.trim().toLowerCase();
+  const normalizedPaymentStatus = input.payment_status?.trim().toLowerCase() ?? "";
+  const maxAgeSeconds =
+    normalizedStatus === "completed"
+      ? getRemainingReceiptWindowSeconds(input.completed_at)
+      : ORDER_ACCESS_MAX_AGE_SECONDS;
+
+  if (maxAgeSeconds === 0) {
+    await clearOrderAccessCookie();
+    return false;
+  }
+
+  await setOrderAccessCookie({
+    orderId: input.id,
+    publicToken: input.public_token,
+    maxAgeSeconds: maxAgeSeconds ?? ORDER_ACCESS_MAX_AGE_SECONDS
+  });
+
+  if (normalizedPaymentStatus === "cancelled" || normalizedPaymentStatus === "failed") {
+    await clearOrderAccessCookie();
+    return false;
   }
 
   return true;

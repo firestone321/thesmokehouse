@@ -5,8 +5,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
-import { getOrderByPublicToken } from "@/lib/api";
-import { clearGuestOrder, getRememberedGuestOrderToken, syncGuestOrderFromServer } from "@/lib/guest-order";
+import { getCurrentOrder } from "@/lib/api";
+import { getRememberedGuestOrderToken, syncGuestOrderFromServer } from "@/lib/guest-order";
 
 type LookupState = "checking" | "empty" | "expired" | "error";
 
@@ -19,17 +19,8 @@ export default function LastGuestOrderPage() {
     let active = true;
 
     async function resolveRememberedOrder() {
-      const publicToken = getRememberedGuestOrderToken();
-      if (!publicToken) {
-        if (active) {
-          setState("empty");
-          setMessage("There is no active pickup order saved on this device.");
-        }
-        return;
-      }
-
       try {
-        const order = await getOrderByPublicToken(publicToken);
+        const order = await getCurrentOrder();
         const { isExpiredReceipt } = syncGuestOrderFromServer(order);
 
         if (!active) {
@@ -44,10 +35,16 @@ export default function LastGuestOrderPage() {
 
         router.replace(`/order/${order.public_token}`);
       } catch (error) {
-        clearGuestOrder(publicToken);
         if (active) {
-          setState("error");
-          setMessage(error instanceof Error ? error.message : "We could not reopen the saved order.");
+          const rememberedToken = getRememberedGuestOrderToken();
+          if (rememberedToken) {
+            setState("expired");
+            setMessage("A recent order is remembered on this device, but the secure order session is unavailable or expired.");
+            return;
+          }
+
+          setState("empty");
+          setMessage(error instanceof Error ? error.message : "There is no active pickup order saved on this device.");
         }
       }
     }

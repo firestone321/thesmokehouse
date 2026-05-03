@@ -1,5 +1,5 @@
 import { after, NextResponse } from "next/server";
-import { hasReadAccessToOrder } from "@/lib/order-access";
+import { clearOrderAccessCookie, hasReadAccessToOrder, syncOrderAccessCookie } from "@/lib/order-access";
 import { logSecurityEvent } from "@/lib/observability/security-events";
 import { getOrderPaymentSnapshot, scheduleDuePendingPaymentRecovery } from "@/lib/payments/order-payments";
 import { enforceRateLimit } from "@/lib/rate-limit";
@@ -63,6 +63,7 @@ export async function GET(request: Request) {
   const hasAccess = await hasReadAccessToOrder(accessOrder);
 
   if (!hasAccess) {
+    await clearOrderAccessCookie();
     logSecurityEvent({
       event: "payment_status_missing_access_session",
       severity: "warning",
@@ -76,6 +77,8 @@ export async function GET(request: Request) {
     });
     return NextResponse.json({ message: "Missing valid order access session." }, { status: 403 });
   }
+
+  await syncOrderAccessCookie(accessOrder);
 
   try {
     const order = await getOrderPaymentSnapshot(token, {
