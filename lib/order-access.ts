@@ -183,63 +183,51 @@ function isWithinReceiptWindow(completedAt: string | null | undefined) {
   return Date.now() - completedAtMs <= RECEIPT_REOPEN_WINDOW_MS;
 }
 
-function getDeviceBindingFailure(message: string): OrderReadAccessDecision {
+function denied(
+  status: number,
+  message: string,
+  clearOrderAccessCookie: boolean = false
+): OrderReadAccessDecision {
   return {
     allowed: false,
-    status: 409,
+    status,
     message,
-    clearOrderAccessCookie: true
+    clearOrderAccessCookie
   };
 }
 
 export async function resolveOrderReadAccess(input: OrderReadAccessTarget): Promise<OrderReadAccessDecision> {
   const payload = await getOrderAccessSession();
   if (!payload) {
-    return {
-      allowed: false,
-      status: 401,
-      message: "Missing valid order access session.",
-      clearOrderAccessCookie: false
-    };
+    return denied(401, "Your secure order session is missing. Reopen this order from the same device that placed it.");
   }
 
   if (payload.orderId !== input.id || (input.public_token && payload.publicToken !== input.public_token)) {
-    return {
-      allowed: false,
-      status: 403,
-      message: "Missing valid order access session.",
-      clearOrderAccessCookie: true
-    };
+    return denied(403, "This secure order session does not match the selected order.", true);
   }
 
   const normalizedStatus = input.status.trim().toLowerCase();
   const normalizedPaymentStatus = input.payment_status?.trim().toLowerCase() ?? "";
 
   if (normalizedStatus === "cancelled" || normalizedPaymentStatus === "cancelled" || normalizedPaymentStatus === "failed") {
-    return {
-      allowed: false,
-      status: 403,
-      message: "This order is no longer available on this device.",
-      clearOrderAccessCookie: true
-    };
+    return denied(403, "This order can no longer be reopened.", true);
   }
 
   if (normalizedStatus === "completed" && !isWithinReceiptWindow(input.completed_at)) {
-    return {
-      allowed: false,
-      status: 403,
-      message: "This receipt window has expired on this device.",
-      clearOrderAccessCookie: true
-    };
+    return denied(403, "This receipt window has expired.", true);
   }
 
   const guestDevice = await getGuestDeviceSession();
-  if (!guestDevice?.deviceId || !payload.deviceId || !input.device_id) {
-    return getDeviceBindingFailure("This order can only be reopened on the device that placed it.");
+  if (!guestDevice?.deviceId) {
+    return denied(409, "Your device session is missing. Reopen this order from the original device.", false);
+  }
+
+  if (!payload.deviceId || !input.device_id) {
+    return denied(409, "This is an older order session and needs to be reopened from the original device.", false);
   }
 
   if (guestDevice.deviceId !== payload.deviceId || guestDevice.deviceId !== input.device_id) {
-    return getDeviceBindingFailure("This order can only be reopened on the device that placed it.");
+    return denied(409, "This order belongs to another device.", false);
   }
 
   return { allowed: true };
