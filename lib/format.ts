@@ -22,6 +22,19 @@ export function toKampalaDateTimeString(value: string | Date): string {
   }).format(date);
 }
 
+export function toKampalaTimeString(value: string | Date): string {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "Unknown time";
+  }
+
+  return new Intl.DateTimeFormat("en-UG", {
+    timeZone: "Africa/Kampala",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(date);
+}
+
 export function formatDateTimeInKampala(value: string | Date): string {
   return `${toKampalaDateTimeString(value)} EAT`;
 }

@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { EnableOrderNotifications } from "@/components/enable-order-notifications";
 import { useCartStore } from "@/lib/store";
 import { formatCurrency, formatPaymentStatus, formatStatus } from "@/lib/format";
 import { rememberGuestOrder } from "@/lib/guest-order";
 
 type PaymentResultOrder = {
+  orderId: number;
   publicToken: string;
   orderNumber: string;
   customerName: string;
@@ -277,6 +279,8 @@ export function PaymentResultView() {
                 </ul>
               </div>
             ) : null}
+
+            {order?.viewState === "success" ? <EnableOrderNotifications orderId={order.orderId} /> : null}
           </section>
 
           <aside className="h-fit min-w-0 rounded-md border border-[#2B211B]/10 bg-[#FFF8EF] p-5 shadow-[0_20px_50px_rgba(42,33,26,0.1)] lg:sticky lg:top-24">

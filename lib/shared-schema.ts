@@ -1,6 +1,6 @@
 import { MenuCategory, MenuItem, Order, OrderItem, OrderStatus, PaymentStatus } from "@/lib/types";
 import { resolveStockForPortion } from "@/lib/menu-stock";
-import { toKampalaDateTimeString } from "@/lib/format";
+import { toKampalaDateTimeString, toKampalaTimeString } from "@/lib/format";
 
 type MenuCategoryRelation =
   | {
@@ -90,10 +90,7 @@ export function promisedAtToPickupLabel(promisedAt: string | null | undefined): 
     return "15 min";
   }
 
-  return new Intl.DateTimeFormat("en-UG", {
-    hour: "numeric",
-    minute: "2-digit"
-  }).format(date);
+  return toKampalaTimeString(date);
 }
 
 export interface SharedMenuItemRow {

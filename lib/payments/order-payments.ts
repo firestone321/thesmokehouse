@@ -67,6 +67,7 @@ export type PendingPaymentRecoveryStats = {
 };
 
 export type OrderPaymentSnapshot = {
+  orderId: number;
   publicToken: string;
   orderNumber: string;
   customerName: string;
@@ -211,6 +212,7 @@ function buildSnapshot(row: OrderPaymentRow, options?: { verified?: boolean; hin
   const paymentStatus = normalizeStoredPaymentStatus(row.payment_status);
 
   return {
+    orderId: row.id,
     publicToken: row.public_token,
     orderNumber: row.order_number,
     customerName: row.customer_name ?? "Customer",
