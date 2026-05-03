@@ -7,7 +7,6 @@ import { EnableOrderNotifications } from "@/components/enable-order-notification
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { getOrderByPublicToken } from "@/lib/api";
-import { formatDateTimeInKampala } from "@/lib/format";
 import { syncGuestOrderFromServer } from "@/lib/guest-order";
 import { Order } from "@/lib/types";
 import { formatCurrency, formatPaymentStatus, formatStatus } from "@/lib/format";
@@ -404,7 +403,7 @@ export default function OrderTrackingPage() {
                 </div>
                 <div className="rounded-md border border-[#2B211B]/10 bg-white/70 p-4">
                   <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8A6246]">Placed at</p>
-                  <p className="mt-2 text-lg font-black text-[#2A211A]">{formatDateTimeInKampala(order.created_at)}</p>
+                  <p className="mt-2 text-lg font-black text-[#2A211A]">{order.created_at_eat}</p>
                 </div>
                 <div className="rounded-md border border-[#2B211B]/10 bg-white/70 p-4">
                   <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8A6246]">

@@ -45,6 +45,7 @@ export interface Order {
   notes?: string | null;
   total_amount: number;
   created_at: string;
+  created_at_eat: string;
   completed_at?: string | null;
   cancelled_at?: string | null;
   items?: OrderItem[];

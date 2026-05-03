@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useCartStore } from "@/lib/store";
-import { formatCurrency, formatDateTimeInKampala, formatPaymentStatus, formatStatus } from "@/lib/format";
+import { formatCurrency, formatPaymentStatus, formatStatus } from "@/lib/format";
 import { rememberGuestOrder } from "@/lib/guest-order";
 
 type PaymentResultOrder = {
@@ -12,6 +12,7 @@ type PaymentResultOrder = {
   orderNumber: string;
   customerName: string;
   createdAt: string;
+  createdAtEat: string;
   orderStatus: string;
   pickupCode: string | null;
   totalUGX: number;
@@ -249,7 +250,7 @@ export function PaymentResultView() {
                 </div>
                 <div className="rounded-md border border-[#2B211B]/10 bg-white/70 p-4">
                   <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8A6246]">Placed at</p>
-                  <p className="mt-2 text-lg font-black text-[#2A211A]">{formatDateTimeInKampala(order.createdAt)}</p>
+                  <p className="mt-2 text-lg font-black text-[#2A211A]">{order.createdAtEat}</p>
                 </div>
                 <div className="rounded-md border border-[#2B211B]/10 bg-white/70 p-4">
                   <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8A6246]">Total</p>

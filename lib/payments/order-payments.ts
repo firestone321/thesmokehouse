@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { toKampalaDateTimeString } from "@/lib/format";
 import {
   getPesapalTransactionStatus,
   isPesapalInitiationRejectedError,
@@ -70,6 +71,7 @@ export type OrderPaymentSnapshot = {
   orderNumber: string;
   customerName: string;
   createdAt: string;
+  createdAtEat: string;
   orderStatus: string;
   pickupCode: string | null;
   totalUGX: number;
@@ -213,6 +215,7 @@ function buildSnapshot(row: OrderPaymentRow, options?: { verified?: boolean; hin
     orderNumber: row.order_number,
     customerName: row.customer_name ?? "Customer",
     createdAt: row.created_at,
+    createdAtEat: toKampalaDateTimeString(row.created_at),
     orderStatus: row.status,
     pickupCode: row.pickup_code ?? null,
     totalUGX: row.total_amount,

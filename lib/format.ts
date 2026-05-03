@@ -6,20 +6,24 @@ export function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
-export function formatDateTimeInKampala(value: string | Date): string {
+export function toKampalaDateTimeString(value: string | Date): string {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) {
     return "Unknown time";
   }
 
-  return `${new Intl.DateTimeFormat("en-UG", {
+  return new Intl.DateTimeFormat("en-UG", {
     timeZone: "Africa/Kampala",
     day: "2-digit",
     month: "short",
     year: "numeric",
     hour: "numeric",
     minute: "2-digit"
-  }).format(date)} EAT`;
+  }).format(date);
+}
+
+export function formatDateTimeInKampala(value: string | Date): string {
+  return `${toKampalaDateTimeString(value)} EAT`;
 }
 
 export function formatStatus(status: string): string {

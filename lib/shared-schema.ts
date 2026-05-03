@@ -1,5 +1,6 @@
 import { MenuCategory, MenuItem, Order, OrderItem, OrderStatus, PaymentStatus } from "@/lib/types";
 import { resolveStockForPortion } from "@/lib/menu-stock";
+import { toKampalaDateTimeString } from "@/lib/format";
 
 type MenuCategoryRelation =
   | {
@@ -186,6 +187,7 @@ export function mapSharedOrder(row: {
     notes: row.notes,
     total_amount: toNumber(row.total_amount),
     created_at: row.created_at,
+    created_at_eat: toKampalaDateTimeString(row.created_at),
     completed_at: row.completed_at ?? null,
     cancelled_at: row.cancelled_at ?? null,
     items
