@@ -20,9 +20,6 @@ export function SiteFooter() {
           <Link href="/contact" className="font-semibold text-[var(--foreground)] hover:text-[var(--accent)]">
             Contact
           </Link>
-          <Link href="/offline" className="font-semibold text-[var(--foreground)] hover:text-[var(--accent)]">
-            Offline
-          </Link>
         </nav>
       </div>
     </footer>
