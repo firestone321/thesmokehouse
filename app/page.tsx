@@ -41,7 +41,9 @@ export default async function HomePage() {
         is_active,
         is_available_today,
         portion_types (
-          portion_label
+          portion_label,
+          stock_source_portion_type_id,
+          stock_source_units_per_serving
         ),
         menu_categories (
           code,
@@ -61,10 +63,19 @@ export default async function HomePage() {
       let dailyStockMap = new Map<number, number>();
       let finishedStockMap = new Map<number, number>();
 
+      const sourcePortionTypeIds = rows
+        .map((item) => {
+          const pt = Array.isArray(item.portion_types) ? item.portion_types[0] : item.portion_types;
+          return pt?.stock_source_portion_type_id ?? null;
+        })
+        .filter((id): id is number => typeof id === "number" && id > 0);
+
       try {
         const stockMaps = await loadSellableStockMaps(
           supabase,
-          rows.map((item) => Number(item.portion_type_id ?? 0))
+          rows.map((item) => Number(item.portion_type_id ?? 0)),
+          undefined,
+          sourcePortionTypeIds
         );
         dailyStockMap = stockMaps.dailyStockMap;
         finishedStockMap = stockMaps.finishedStockMap;
