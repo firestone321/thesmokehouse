@@ -30,6 +30,9 @@ export async function GET(request: NextRequest) {
       portion_type_id,
       is_active,
       is_available_today,
+      portion_types (
+        portion_label
+      ),
       menu_categories (
         code,
         name

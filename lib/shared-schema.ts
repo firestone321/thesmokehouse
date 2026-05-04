@@ -24,6 +24,15 @@ type MenuItemRelation =
     }>
   | null;
 
+type PortionTypeRelation =
+  | {
+      portion_label?: string | null;
+    }
+  | Array<{
+      portion_label?: string | null;
+    }>
+  | null;
+
 function toNumber(value: unknown): number {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -101,6 +110,7 @@ export interface SharedMenuItemRow {
   image_url: string | null;
   prep_type: string | null;
   portion_type_id?: unknown;
+  portion_types?: PortionTypeRelation;
   is_active?: boolean | null;
   is_available_today?: boolean | null;
   menu_categories?: MenuCategoryRelation;
@@ -110,6 +120,7 @@ export interface SharedMenuItemRow {
 
 export function mapSharedMenuItem(row: SharedMenuItemRow): MenuItem {
   const category = mapPrepTypeToMenuCategory(row.prep_type, row.menu_categories ?? null);
+  const portionType = unwrapRelation(row.portion_types ?? null);
   const stock = resolveStockForPortion(
     Number(row.portion_type_id ?? 0),
     row.dailyStockMap ?? new Map<number, number>(),
@@ -124,6 +135,7 @@ export function mapSharedMenuItem(row: SharedMenuItemRow): MenuItem {
     category_label: category.label,
     price: toNumber(row.base_price),
     image_url: row.image_url,
+    portion_label: portionType?.portion_label ?? null,
     available_quantity: stock.availableQuantity,
     is_available: Boolean(row.is_active) && Boolean(row.is_available_today) && stock.isInStock
   };

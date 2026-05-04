@@ -11,6 +11,7 @@ export interface MenuItem {
   category_label: string;
   price: number;
   image_url: string | null;
+  portion_label: string | null;
   available_quantity: number;
   is_available: boolean;
 }

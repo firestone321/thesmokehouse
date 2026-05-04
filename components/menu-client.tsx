@@ -125,6 +125,11 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
                     <span className="absolute left-2 top-2 rounded bg-ember px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-white">
                       {item.category_label}
                     </span>
+                    {item.portion_label ? (
+                      <span className="absolute right-2 top-2 rounded border border-white/25 bg-[#1f1a17]/80 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-[#fff7ec] backdrop-blur-sm">
+                        {item.portion_label}
+                      </span>
+                    ) : null}
                   </div>
 
                   <div className="px-3 pb-2 pt-3">
