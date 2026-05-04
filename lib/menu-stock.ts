@@ -40,6 +40,11 @@ interface FinishedStockRow {
   current_quantity: unknown;
 }
 
+export interface StockSource {
+  sourcePortionTypeId: number;
+  unitsPerServing: number;
+}
+
 export interface ResolvedStock {
   availableQuantity: number;
   isInStock: boolean;
@@ -63,18 +68,29 @@ export function getUgandaServiceDate(reference = new Date()) {
 export function resolveStockForPortion(
   portionTypeId: number | null | undefined,
   dailyStockMap: Map<number, number>,
-  finishedStockMap: Map<number, number>
+  finishedStockMap: Map<number, number>,
+  stockSource?: StockSource
 ): ResolvedStock {
   const normalizedPortionTypeId = Number.isFinite(portionTypeId) ? Number(portionTypeId) : 0;
 
   let availableQuantity = 0;
 
   if (normalizedPortionTypeId > 0) {
-    if (dailyStockMap.has(normalizedPortionTypeId)) {
-      availableQuantity = dailyStockMap.get(normalizedPortionTypeId) ?? 0;
-    } else if (finishedStockMap.has(normalizedPortionTypeId)) {
-      availableQuantity = finishedStockMap.get(normalizedPortionTypeId) ?? 0;
+    const lookupId = stockSource && stockSource.sourcePortionTypeId > 0
+      ? stockSource.sourcePortionTypeId
+      : normalizedPortionTypeId;
+    const divisor = stockSource && stockSource.unitsPerServing > 1
+      ? stockSource.unitsPerServing
+      : 1;
+
+    let rawQuantity = 0;
+    if (dailyStockMap.has(lookupId)) {
+      rawQuantity = dailyStockMap.get(lookupId) ?? 0;
+    } else if (finishedStockMap.has(lookupId)) {
+      rawQuantity = finishedStockMap.get(lookupId) ?? 0;
     }
+
+    availableQuantity = Math.floor(rawQuantity / divisor);
   }
 
   return {
@@ -87,11 +103,12 @@ export function resolveStockForPortion(
 export async function loadSellableStockMaps(
   supabase: SupabaseAdminClient,
   portionTypeIds: Array<number | null | undefined>,
-  serviceDate = getUgandaServiceDate()
+  serviceDate = getUgandaServiceDate(),
+  sourcePortionTypeIds: Array<number | null | undefined> = []
 ) {
   const normalizedPortionTypeIds = Array.from(
     new Set(
-      portionTypeIds
+      [...portionTypeIds, ...sourcePortionTypeIds]
         .map((value) => Number(value))
         .filter((value) => Number.isInteger(value) && value > 0)
     )

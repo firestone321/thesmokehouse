@@ -31,7 +31,9 @@ export async function GET(request: NextRequest) {
       is_active,
       is_available_today,
       portion_types (
-        portion_label
+        portion_label,
+        stock_source_portion_type_id,
+        stock_source_units_per_serving
       ),
       menu_categories (
         code,
@@ -49,15 +51,25 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const rows = (data ?? []) as SharedMenuItemRow[];
+    const sourcePortionTypeIds = rows
+      .map((item) => {
+        const pt = Array.isArray(item.portion_types) ? item.portion_types[0] : item.portion_types;
+        return pt?.stock_source_portion_type_id ?? null;
+      })
+      .filter((id): id is number => typeof id === "number" && id > 0);
+
     const { dailyStockMap, finishedStockMap } = await loadSellableStockMaps(
       supabase,
-      (data ?? []).map((item) => Number((item as SharedMenuItemRow).portion_type_id ?? 0))
+      rows.map((item) => Number(item.portion_type_id ?? 0)),
+      undefined,
+      sourcePortionTypeIds
     );
 
     return NextResponse.json(
-      (data ?? []).map((item) =>
+      rows.map((item) =>
         mapSharedMenuItem({
-          ...(item as SharedMenuItemRow),
+          ...item,
           dailyStockMap,
           finishedStockMap
         })

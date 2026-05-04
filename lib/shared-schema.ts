@@ -1,5 +1,5 @@
 import { MenuCategory, MenuItem, Order, OrderItem, OrderStatus, PaymentStatus } from "@/lib/types";
-import { resolveStockForPortion } from "@/lib/menu-stock";
+import { resolveStockForPortion, StockSource } from "@/lib/menu-stock";
 import { toKampalaDateTimeString, toKampalaTimeString } from "@/lib/format";
 
 type MenuCategoryRelation =
@@ -27,9 +27,13 @@ type MenuItemRelation =
 type PortionTypeRelation =
   | {
       portion_label?: string | null;
+      stock_source_portion_type_id?: number | null;
+      stock_source_units_per_serving?: number | null;
     }
   | Array<{
       portion_label?: string | null;
+      stock_source_portion_type_id?: number | null;
+      stock_source_units_per_serving?: number | null;
     }>
   | null;
 
@@ -121,10 +125,18 @@ export interface SharedMenuItemRow {
 export function mapSharedMenuItem(row: SharedMenuItemRow): MenuItem {
   const category = mapPrepTypeToMenuCategory(row.prep_type, row.menu_categories ?? null);
   const portionType = unwrapRelation(row.portion_types ?? null);
+  const stockSource: StockSource | undefined =
+    portionType?.stock_source_portion_type_id && portionType.stock_source_portion_type_id > 0
+      ? {
+          sourcePortionTypeId: portionType.stock_source_portion_type_id,
+          unitsPerServing: portionType.stock_source_units_per_serving ?? 1
+        }
+      : undefined;
   const stock = resolveStockForPortion(
     Number(row.portion_type_id ?? 0),
     row.dailyStockMap ?? new Map<number, number>(),
-    row.finishedStockMap ?? new Map<number, number>()
+    row.finishedStockMap ?? new Map<number, number>(),
+    stockSource
   );
 
   return {
