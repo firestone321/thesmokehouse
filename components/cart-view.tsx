@@ -23,7 +23,7 @@ export function CartView({ showCheckout = true }: { showCheckout?: boolean }) {
           <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#666A67]">No fire on the ticket yet</p>
           <h2 className="mt-3 font-heading text-5xl leading-none tracking-normal text-[#30241F]">CART IS EMPTY</h2>
           <p className="mt-4 max-w-xl text-sm font-semibold leading-7 text-[#555854]">
-            Add smoked proteins, sides, and drinks from today&apos;s menu. Your pickup order will stay here until payment is confirmed.
+            Add smoked proteins, sides, accompaniments, and drinks from today&apos;s menu. Your pickup order will stay here until payment is confirmed.
           </p>
           <Link href="/" className="btn-primary mt-6 inline-flex rounded-md px-5 py-3 text-sm font-extrabold uppercase tracking-wide">
             Browse Menu

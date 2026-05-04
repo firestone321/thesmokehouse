@@ -7,7 +7,7 @@ import { useEffect, useId, useState } from "react";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 const links: Array<{ href: "/" | "/order" | "/cart" | "/checkout" | "/contact"; label: string; description: string }> = [
-  { href: "/", label: "Menu", description: "Smoked proteins, sides, and drinks" },
+  { href: "/", label: "Menu", description: "Smoked proteins, sides, accompaniments, and drinks" },
   { href: "/order", label: "Current Order", description: "Reopen your pickup code or receipt" },
   { href: "/cart", label: "Cart", description: "Review this device's order" },
   { href: "/checkout", label: "Checkout", description: "Pay and lock in pickup" },
