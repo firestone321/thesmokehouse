@@ -23,6 +23,8 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
   const drinkItems = useMemo(() => items.filter((item) => item.category === "drinks"), [items]);
   const accompanimentItems = useMemo(() => items.filter((item) => item.category === "accompaniments"), [items]);
   const storefrontItems = useMemo(() => items.filter((item) => item.category !== "drinks" && item.category !== "accompaniments"), [items]);
+  // show accompaniments in-card even when out of stock; UI will mark them "Sold out" and disable selection
+  const accompanimentList = useMemo(() => accompanimentItems, [accompanimentItems]);
 
   const availableCategories = useMemo(
     () =>
@@ -58,15 +60,17 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
     () =>
       new Set(
         safeCartItems
-          .filter((item) => drinkItems.some((drink) => drink.id === item.menu_item_id))
+          .filter((item) =>
+            drinkItems.some((drink) => drink.id === item.menu_item_id) ||
+            accompanimentList.some((accompaniment) => accompaniment.id === item.menu_item_id)
+          )
           .map((item) => item.menu_item_id)
       ),
-    [drinkItems, safeCartItems]
+    [accompanimentList, drinkItems, safeCartItems]
   );
 
   const filtered = useMemo(() => storefrontItems.filter((item) => item.category === active), [active, storefrontItems]);
   const displayedTotal = cartTotal;
-  const showAccompaniments = active !== "sides" && active !== "drinks" && accompanimentItems.length > 0;
 
   function toggleAddon(addon: MenuItem) {
     if (!addon.is_available) {
@@ -145,6 +149,44 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
                       </p>
                     ) : null}
 
+                    {accompanimentList.length > 0 ? (
+                      <div className="mt-3 border-t border-[#e4d0b9] pt-3">
+                        <p className="text-xs font-black uppercase tracking-wide text-[#6a4d38]">Add Accompaniments</p>
+                        <div className="mt-2 space-y-2">
+                          {accompanimentList.map((accompaniment) => {
+                            const checked = addonIdsInCart.has(accompaniment.id);
+                            const isUnavailable = !accompaniment.is_available;
+                            const addonStatus = checked ? "In cart" : isUnavailable ? "Sold out" : `+ ${formatCurrency(accompaniment.price)}`;
+
+                            return (
+                              <label
+                                key={accompaniment.id}
+                                className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm font-bold ${
+                                  isUnavailable
+                                    ? "border-[#e5d8c8] bg-[#f1e7db] text-[#9b8674]"
+                                    : checked
+                                    ? "border-[#dcc8b1] bg-[#fff7ec] text-[#2c231d]"
+                                    : "border-[#dcc8b1] bg-[#fff7ec] text-[#2c231d]"
+                                }`}
+                              >
+                                <span className="flex min-w-0 items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    disabled={isUnavailable}
+                                    onChange={() => toggleAddon(accompaniment)}
+                                    className="h-4 w-4 accent-[#a23b22]"
+                                  />
+                                  <span className="truncate">{accompaniment.name}</span>
+                                </span>
+                                <span className="shrink-0 text-xs">{addonStatus}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
+
                     {drinkItems.length > 0 ? (
                       <div className="mt-3 border-t border-[#e4d0b9] pt-3">
                         <p className="text-xs font-black uppercase tracking-wide text-[#6a4d38]">Add drinks</p>
@@ -205,77 +247,6 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
             );
           })}
           </div>
-
-          {showAccompaniments ? (
-            <section className="mt-5 overflow-hidden rounded-xl border border-[#d8c1a7] bg-[#fff4e7] shadow-[0_8px_20px_rgba(64,45,30,0.08)]">
-              <div className="border-b border-[#e7d4bf] px-4 py-4">
-                <p className="text-xs font-black uppercase tracking-wide text-[#6a4d38]">Accompaniments</p>
-                <h3 className="mt-1 text-lg font-black text-[#2b211b]">Add with any main category</h3>
-                <p className="mt-1 text-sm font-semibold text-[#6a5647]">Shown on the main food sections, but not on sides.</p>
-              </div>
-
-              <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
-                {accompanimentItems.map((item) => {
-                  const isOutOfStock = !item.is_available;
-                  const stockMessage = isOutOfStock
-                    ? "Out of stock"
-                    : item.available_quantity <= 10
-                      ? `Only ${item.available_quantity} left`
-                      : null;
-
-                  return (
-                    <article key={item.id} className="overflow-hidden rounded-xl border border-[#d8c1a7] bg-[#fffaf2] shadow-[0_8px_20px_rgba(64,45,30,0.1)]">
-                      <div className="relative h-40 w-full bg-[#ede1d0]">
-                        {item.image_url ? (
-                          <Image src={item.image_url} alt={item.name} fill className="object-cover" sizes="(max-width: 1024px) 50vw, 33vw" />
-                        ) : (
-                          <div className="flex h-full items-center justify-center text-xs font-semibold uppercase tracking-wide text-[#6f5745]">
-                            Fresh today
-                          </div>
-                        )}
-                        <span className="absolute left-2 top-2 rounded bg-ember px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-white">
-                          {item.category_label}
-                        </span>
-                        {item.portion_label ? (
-                          <span className="absolute right-2 top-2 rounded border border-white/25 bg-[#1f1a17]/80 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-[#fff7ec] backdrop-blur-sm">
-                            {item.portion_label}
-                          </span>
-                        ) : null}
-                      </div>
-
-                      <div className="px-3 pb-2 pt-3">
-                        <h3 className="text-base font-extrabold text-[#1f1a17]">{item.name}</h3>
-                        <p className="mt-1 min-h-10 text-sm font-medium text-[#4f4138]">
-                          {item.description ?? "House-smoked and finished fresh to order."}
-                        </p>
-                        {stockMessage ? (
-                          <p className={`mt-2 text-xs font-bold uppercase tracking-wide ${isOutOfStock ? "text-[#8d3d2f]" : "text-[#9a5a1d]"}`}>
-                            {stockMessage}
-                          </p>
-                        ) : null}
-                      </div>
-
-                      <div className="flex items-center justify-between border-t border-[#dfcbb5] bg-[#f4e9d9] px-3 py-2">
-                        <div>
-                          <span className="text-base font-black text-[#2b211b]">{formatCurrency(item.price)}</span>
-                        </div>
-                        <button
-                          type="button"
-                          disabled={isOutOfStock}
-                          onClick={() => addMenuItem(item)}
-                          className={`rounded-md px-4 py-2 text-xs font-extrabold uppercase tracking-wide ${
-                            isOutOfStock ? "cursor-not-allowed bg-[#d2bdaa] text-[#fff7ec] opacity-80" : "btn-primary"
-                          }`}
-                        >
-                          {isOutOfStock ? "Sold Out" : "Add"}
-                        </button>
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
-            </section>
-          ) : null}
         </div>
 
         <aside className="hidden lg:flex lg:sticky lg:top-4 lg:h-[calc(100vh-2rem)] lg:flex-col lg:rounded-xl lg:border lg:border-[#d5bea4] lg:bg-[#fff7ec] lg:p-4 lg:shadow-[0_12px_24px_rgba(67,45,28,0.12)]">
