@@ -1,6 +1,6 @@
-const SHELL_CACHE_NAME = "smokehouse-shell-v3";
-const RUNTIME_CACHE_NAME = "smokehouse-runtime-v3";
-const IMAGE_CACHE_NAME = "smokehouse-images-v3";
+const SHELL_CACHE_NAME = "smokehouse-shell-v4";
+const RUNTIME_CACHE_NAME = "smokehouse-runtime-v4";
+const IMAGE_CACHE_NAME = "smokehouse-images-v4";
 const CACHE_NAMES = [SHELL_CACHE_NAME, RUNTIME_CACHE_NAME, IMAGE_CACHE_NAME];
 const STATIC_NAVIGATION_PATHS = ["/", "/cart", "/offline"];
 const STATIC_ASSET_PATHS = [
