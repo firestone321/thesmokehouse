@@ -25,6 +25,16 @@ interface MenuPriceRow {
   portion_type_id: number | null;
   is_active: boolean;
   is_available_today: boolean;
+  portion_types:
+    | {
+        stock_source_portion_type_id: number | null;
+        stock_source_units_per_serving: number | null;
+      }
+    | Array<{
+        stock_source_portion_type_id: number | null;
+        stock_source_units_per_serving: number | null;
+      }>
+    | null;
 }
 
 interface CreatedOrderRow {
@@ -89,7 +99,9 @@ export async function POST(req: NextRequest) {
 
   const { data: menuItems, error: menuError } = await supabase
     .from("menu_items")
-    .select("id,name,base_price,portion_type_id,is_active,is_available_today")
+    .select(
+      "id,name,base_price,portion_type_id,is_active,is_available_today,portion_types(stock_source_portion_type_id,stock_source_units_per_serving)"
+    )
     .in("id", ids);
 
   if (menuError || !menuItems) {
@@ -100,10 +112,21 @@ export async function POST(req: NextRequest) {
   let dailyStockMap = new Map<number, number>();
   let finishedStockMap = new Map<number, number>();
 
+  function unwrapPortionType(value: MenuPriceRow["portion_types"]) {
+    if (Array.isArray(value)) return value[0] ?? null;
+    return value;
+  }
+
+  const sourcePortionTypeIds = safeMenuItems
+    .map((item) => unwrapPortionType(item.portion_types)?.stock_source_portion_type_id ?? null)
+    .filter((id): id is number => typeof id === "number" && id > 0);
+
   try {
     const stockMaps = await loadSellableStockMaps(
       supabase,
-      safeMenuItems.map((item) => item.portion_type_id)
+      safeMenuItems.map((item) => item.portion_type_id),
+      undefined,
+      sourcePortionTypeIds
     );
     dailyStockMap = stockMaps.dailyStockMap;
     finishedStockMap = stockMaps.finishedStockMap;
@@ -123,7 +146,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "One or more menu items are unavailable" }, { status: 400 });
     }
 
-    const stock = resolveStockForPortion(dbItem.portion_type_id, dailyStockMap, finishedStockMap);
+    const portionType = unwrapPortionType(dbItem.portion_types);
+    const stockSource =
+      portionType?.stock_source_portion_type_id && portionType.stock_source_portion_type_id > 0
+        ? {
+            sourcePortionTypeId: portionType.stock_source_portion_type_id,
+            unitsPerServing: portionType.stock_source_units_per_serving ?? 1
+          }
+        : undefined;
+    const stock = resolveStockForPortion(dbItem.portion_type_id, dailyStockMap, finishedStockMap, stockSource);
 
     if (stock.availableQuantity <= 0) {
       return NextResponse.json({ error: `${dbItem.name} is out of stock` }, { status: 400 });
