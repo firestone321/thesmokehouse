@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "postinstall": "node scripts/patch-web-push.cjs",
     "lint": "eslint app components lib scripts next.config.js tailwind.config.ts postcss.config.js",
     "seed": "tsx scripts/seed.ts"
   },
