@@ -150,6 +150,8 @@ export function EnableOrderNotifications({ orderId }: EnableOrderNotificationsPr
           existingSubscription
           && subscriptionMatchesVapidKey(existingSubscription, vapidPublicKey)
         ) {
+          await enableNotificationsOnThisDevice(orderId, existingSubscription as PushSubscriptionWithJson);
+
           if (!cancelled) {
             setLinkState("linked");
             setMessage(null);

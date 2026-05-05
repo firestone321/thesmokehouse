@@ -115,6 +115,7 @@ async function completePushDispatch(input: {
   subscriptionCount: number;
   successCount: number;
   staleSubscriptionCount: number;
+  lastError?: string | null;
 }) {
   const { error } = await getSupabaseAdmin()
     .from("push_notification_dispatches")
@@ -124,7 +125,7 @@ async function completePushDispatch(input: {
       success_count: input.successCount,
       stale_subscription_count: input.staleSubscriptionCount,
       processing_started_at: null,
-      last_error: null
+      last_error: input.lastError ?? null
     })
     .eq("idempotency_key", input.idempotencyKey);
 
@@ -249,18 +250,32 @@ export async function processOrderReadyPushDispatch(idempotencyKey: string) {
       subscriptions.map(async (subscription) => {
         try {
           await sendWebPushNotification(subscription, payload);
-          return { success: true, staleSubscriptionId: null as string | null };
+          return {
+            success: true,
+            staleSubscriptionId: null as string | null,
+            errorMessage: null as string | null
+          };
         } catch (error) {
           if (isStalePushSubscriptionError(error)) {
-            return { success: false, staleSubscriptionId: subscription.id };
+            return {
+              success: false,
+              staleSubscriptionId: subscription.id,
+              errorMessage: error instanceof Error ? error.message : "stale_push_subscription"
+            };
           }
 
+          const errorMessage = error instanceof Error ? error.message : "unknown_error";
           console.error("order_ready_push_send_failed", {
             orderId: order.id,
             subscriptionId: subscription.id,
-            error: error instanceof Error ? error.message : "unknown_error"
+            platform: subscription.platform,
+            error: errorMessage
           });
-          return { success: false, staleSubscriptionId: null as string | null };
+          return {
+            success: false,
+            staleSubscriptionId: null as string | null,
+            errorMessage
+          };
         }
       })
     );
@@ -268,13 +283,28 @@ export async function processOrderReadyPushDispatch(idempotencyKey: string) {
     const staleSubscriptionIds = deliveryResults
       .map((result) => result.staleSubscriptionId)
       .filter((subscriptionId): subscriptionId is string => Boolean(subscriptionId));
+    const retryableErrors = deliveryResults
+      .filter((result) => !result.success && !result.staleSubscriptionId && result.errorMessage)
+      .map((result) => result.errorMessage as string);
 
     await deletePushSubscriptions(staleSubscriptionIds);
+
+    if (successCount === 0 && retryableErrors.length > 0) {
+      throw new Error(`Push delivery failed: ${retryableErrors[0]}`);
+    }
+
+    const lastError = subscriptions.length === 0
+      ? "No push subscriptions are linked to this order device."
+      : successCount === 0
+        ? "No push subscriptions accepted the notification."
+        : null;
+
     await completePushDispatch({
       idempotencyKey: dispatch.idempotency_key,
       subscriptionCount: subscriptions.length,
       successCount,
-      staleSubscriptionCount: staleSubscriptionIds.length
+      staleSubscriptionCount: staleSubscriptionIds.length,
+      lastError
     });
 
     return {
