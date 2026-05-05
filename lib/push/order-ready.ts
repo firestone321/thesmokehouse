@@ -46,6 +46,15 @@ function normalizeStatus(value: string | null | undefined) {
   return value?.trim().toLowerCase() ?? "";
 }
 
+function toTimestampMs(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function isReadyOrder(row: Pick<OrderReadyRow, "status">) {
   return normalizeStatus(row.status) === "ready";
 }
@@ -228,7 +237,32 @@ export async function processOrderReadyPushDispatch(idempotencyKey: string) {
     }
 
     if (!isReadyOrder(order)) {
-      throw new PushTriggerError("Order is not in Ready status.");
+      const orderUpdatedAtMs = toTimestampMs(order.updated_at);
+      const dispatchUpdatedAtMs = toTimestampMs(dispatch.order_updated_at);
+
+      if (
+        orderUpdatedAtMs !== null
+        && dispatchUpdatedAtMs !== null
+        && orderUpdatedAtMs < dispatchUpdatedAtMs
+      ) {
+        throw new Error("Ready update is not visible yet.");
+      }
+
+      await completePushDispatch({
+        idempotencyKey: dispatch.idempotency_key,
+        subscriptionCount: 0,
+        successCount: 0,
+        staleSubscriptionCount: 0,
+        lastError: "Skipped because the order moved out of Ready status before delivery."
+      });
+
+      return {
+        orderId: order.id,
+        orderUrl: buildOrderUrl(order),
+        subscriptionCount: 0,
+        successCount: 0,
+        staleSubscriptionCount: 0
+      };
     }
 
     const subscriptions = await resolveSubscriptionsForOrder(order.id);
