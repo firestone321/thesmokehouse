@@ -10,6 +10,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 const pushSubscriptionSchema = z.object({
   orderId: z.coerce.number().int().positive().optional(),
   deviceId: z.string().trim().min(8).max(128).regex(/^[A-Za-z0-9_-]+$/).optional(),
+  vapidPublicKey: z.string().trim().min(1).optional(),
   endpoint: z.string().url(),
   expirationTime: z.number().nullable().optional(),
   keys: z.object({
@@ -40,6 +41,10 @@ function validateSameOriginMutation(request: Request) {
   return origin === requestOrigin
     ? null
     : NextResponse.json({ message: "Invalid request origin." }, { status: 403 });
+}
+
+function getRuntimeVapidPublicKey() {
+  return process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY?.trim() ?? "";
 }
 
 async function verifyOrderLink(orderId: number) {
@@ -110,6 +115,23 @@ export async function POST(request: Request) {
         issues: parsed.error.flatten()
       },
       { status: 400 }
+    );
+  }
+
+  const runtimeVapidPublicKey = getRuntimeVapidPublicKey();
+  if (!runtimeVapidPublicKey) {
+    return NextResponse.json(
+      { message: "Push notifications are not configured yet." },
+      { status: 503 }
+    );
+  }
+
+  if (!parsed.data.vapidPublicKey || parsed.data.vapidPublicKey !== runtimeVapidPublicKey) {
+    return NextResponse.json(
+      {
+        message: "Your app has an older notification key. Refresh Smokehouse, then enable notifications again."
+      },
+      { status: 409 }
     );
   }
 

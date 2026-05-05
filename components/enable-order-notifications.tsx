@@ -56,11 +56,33 @@ function subscriptionMatchesVapidKey(subscription: PushSubscription, publicKey: 
   return subscriptionKey === publicKey;
 }
 
-function buildSubscribePayload(orderId: number, subscription: PushSubscriptionWithJson) {
+function buildSubscribePayload(orderId: number, subscription: PushSubscriptionWithJson, vapidPublicKey: string) {
   return {
     ...subscription.toJSON(),
-    orderId
+    orderId,
+    vapidPublicKey
   };
+}
+
+async function loadRuntimeVapidPublicKey() {
+  const response = await fetch("/api/push/public-key", {
+    cache: "no-store"
+  });
+  const payload = (await response.json().catch(() => null)) as {
+    publicKey?: string;
+    message?: string;
+  } | null;
+
+  if (!response.ok) {
+    throw new Error(payload?.message ?? "Push notifications are not configured yet.");
+  }
+
+  const publicKey = payload?.publicKey?.trim();
+  if (!publicKey) {
+    throw new Error("Push notifications are not configured yet.");
+  }
+
+  return publicKey;
 }
 
 async function ensureServiceWorkerRegistration() {
@@ -92,13 +114,13 @@ async function createOrRefreshSubscription(registration: ServiceWorkerRegistrati
   });
 }
 
-async function enableNotificationsOnThisDevice(orderId: number, subscription: PushSubscriptionWithJson) {
+async function enableNotificationsOnThisDevice(orderId: number, subscription: PushSubscriptionWithJson, vapidPublicKey: string) {
   const response = await fetch("/api/push/subscribe", {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
     },
-    body: JSON.stringify(buildSubscribePayload(orderId, subscription))
+    body: JSON.stringify(buildSubscribePayload(orderId, subscription, vapidPublicKey))
   });
   const payload = (await response.json().catch(() => null)) as { message?: string } | null;
 
@@ -138,10 +160,7 @@ export function EnableOrderNotifications({ orderId }: EnableOrderNotificationsPr
       }
 
       try {
-        const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY?.trim();
-        if (!vapidPublicKey) {
-          throw new Error("Push notifications are not configured yet. Please try again later.");
-        }
+        const vapidPublicKey = await loadRuntimeVapidPublicKey();
 
         const registration = await ensureServiceWorkerRegistration();
         const existingSubscription = await registration.pushManager.getSubscription();
@@ -150,7 +169,7 @@ export function EnableOrderNotifications({ orderId }: EnableOrderNotificationsPr
           existingSubscription
           && subscriptionMatchesVapidKey(existingSubscription, vapidPublicKey)
         ) {
-          await enableNotificationsOnThisDevice(orderId, existingSubscription as PushSubscriptionWithJson);
+          await enableNotificationsOnThisDevice(orderId, existingSubscription as PushSubscriptionWithJson, vapidPublicKey);
 
           if (!cancelled) {
             setLinkState("linked");
@@ -199,17 +218,11 @@ export function EnableOrderNotifications({ orderId }: EnableOrderNotificationsPr
       return;
     }
 
-    const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY?.trim();
-    if (!vapidPublicKey) {
-      setLinkState("error");
-      setMessage("Push notifications are not configured yet. Please try again later.");
-      return;
-    }
-
     setLinkState("linking");
     setMessage("Turning on pickup alerts for this device...");
 
     try {
+      const vapidPublicKey = await loadRuntimeVapidPublicKey();
       const permission = nextPermissionState === "granted"
         ? nextPermissionState
         : await Notification.requestPermission();
@@ -229,7 +242,7 @@ export function EnableOrderNotifications({ orderId }: EnableOrderNotificationsPr
       const registration = await ensureServiceWorkerRegistration();
       const subscription = await createOrRefreshSubscription(registration, vapidPublicKey);
 
-      await enableNotificationsOnThisDevice(orderId, subscription as PushSubscriptionWithJson);
+      await enableNotificationsOnThisDevice(orderId, subscription as PushSubscriptionWithJson, vapidPublicKey);
 
       setLinkState("linked");
       setMessage(null);
