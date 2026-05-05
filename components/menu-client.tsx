@@ -8,9 +8,17 @@ import { formatCurrency } from "@/lib/format";
 import { useCartStore } from "@/lib/store";
 import { useCartHydration } from "@/lib/use-cart-hydration";
 
-export function MenuClient({ items }: { items: MenuItem[] }) {
+export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
   const [active, setActive] = useState<string>("");
   const [pickupTime, setPickupTime] = useState("15");
+  const [items, setItems] = useState<MenuItem[]>(initialItems);
+
+  useEffect(() => {
+    fetch("/api/menu")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (Array.isArray(data)) setItems(data); })
+      .catch(() => null);
+  }, []);
 
   const cartItems = useCartStore((s) => s.items);
   const addItem = useCartStore((s) => s.addItem);
