@@ -21,6 +21,12 @@ export type PushNotificationPayload = {
   data?: Record<string, unknown>;
 };
 
+export type WebPushErrorDetails = {
+  statusCode: number | null;
+  body: string | null;
+  endpoint: string | null;
+};
+
 let vapidConfigured = false;
 const PUSH_TTL_SECONDS = 300;
 const MAX_PUSH_TOPIC_LENGTH = 32;
@@ -77,11 +83,30 @@ export async function sendWebPushNotification(
   );
 }
 
+export function getWebPushErrorDetails(error: unknown): WebPushErrorDetails {
+  if (typeof error !== "object" || error === null) {
+    return { statusCode: null, body: null, endpoint: null };
+  }
+
+  const errorRecord = error as Record<string, unknown>;
+  const statusCode = typeof errorRecord.statusCode === "number" ? errorRecord.statusCode : null;
+  const body = typeof errorRecord.body === "string" ? errorRecord.body : null;
+  const endpoint = typeof errorRecord.endpoint === "string" ? errorRecord.endpoint : null;
+
+  return {
+    statusCode,
+    body,
+    endpoint
+  };
+}
+
 export function isStalePushSubscriptionError(error: unknown) {
+  const { statusCode } = getWebPushErrorDetails(error);
   return (
-    typeof error === "object"
-    && error !== null
-    && "statusCode" in error
-    && (error.statusCode === 404 || error.statusCode === 410)
+    statusCode === 400
+    || statusCode === 401
+    || statusCode === 403
+    || statusCode === 404
+    || statusCode === 410
   );
 }

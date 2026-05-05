@@ -2,6 +2,7 @@ import "server-only";
 
 import { getSupabaseAdmin } from "@/lib/supabase";
 import {
+  getWebPushErrorDetails,
   isStalePushSubscriptionError,
   sendWebPushNotification,
   type StoredPushSubscription
@@ -299,10 +300,13 @@ export async function processOrderReadyPushDispatch(idempotencyKey: string) {
           }
 
           const errorMessage = error instanceof Error ? error.message : "unknown_error";
+          const errorDetails = getWebPushErrorDetails(error);
           console.error("order_ready_push_send_failed", {
             orderId: order.id,
             subscriptionId: subscription.id,
             platform: subscription.platform,
+            statusCode: errorDetails.statusCode,
+            responseBody: errorDetails.body?.slice(0, 200) ?? null,
             error: errorMessage
           });
           return {
