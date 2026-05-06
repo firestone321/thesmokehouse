@@ -4,21 +4,12 @@ import { MenuClient } from "@/components/menu-client";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { isLocalhostBypassEnabledForHost } from "@/lib/local-bypass";
-import { loadSellableStockMaps } from "@/lib/menu-stock";
-import { mapSharedMenuItem, SharedMenuItemRow } from "@/lib/shared-schema";
+import { getUgandaServiceDate } from "@/lib/menu-stock";
+import { mapStorefrontMenuRpcRow, StorefrontMenuRpcRow } from "@/lib/shared-schema";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { MenuItem } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
-
-function buildLocalStockBypassMap(items: SharedMenuItemRow[]) {
-  return new Map(
-    items
-      .map((item) => Number(item.portion_type_id ?? 0))
-      .filter((portionTypeId) => Number.isInteger(portionTypeId) && portionTypeId > 0)
-      .map((portionTypeId) => [portionTypeId, 99])
-  );
-}
 
 export default async function HomePage() {
   let menuItems: MenuItem[] = [];
@@ -27,74 +18,19 @@ export default async function HomePage() {
   const localBypassEnabled = isLocalhostBypassEnabledForHost(headerStore.get("host"));
 
   try {
-    const { data: items, error } = await supabase
-      .from("menu_items")
-      .select(
-        `
-        id,
-        name,
-        description,
-        base_price,
-        image_url,
-        prep_type,
-        portion_type_id,
-        is_active,
-        is_available_today,
-        portion_types (
-          portion_label,
-          stock_source_portion_type_id,
-          stock_source_units_per_serving
-        ),
-        menu_categories (
-          code,
-          name
-        )
-      `
-      )
-      .eq("is_active", true)
-      .eq("is_available_today", true)
-      .order("sort_order")
-      .order("name");
+    const { data, error } = await supabase.rpc("get_storefront_menu", {
+      p_service_date: getUgandaServiceDate()
+    });
 
     if (error) {
-      console.error("Failed to load menu items from Supabase.", error.message);
-    } else {
-      const rows = (items ?? []) as SharedMenuItemRow[];
-      let dailyStockMap = new Map<number, number>();
-      let finishedStockMap = new Map<number, number>();
-
-      const sourcePortionTypeIds = rows
-        .map((item) => {
-          const pt = Array.isArray(item.portion_types) ? item.portion_types[0] : item.portion_types;
-          return pt?.stock_source_portion_type_id ?? null;
-        })
-        .filter((id): id is number => typeof id === "number" && id > 0);
-
-      try {
-        const stockMaps = await loadSellableStockMaps(
-          supabase,
-          rows.map((item) => Number(item.portion_type_id ?? 0)),
-          undefined,
-          sourcePortionTypeIds
-        );
-        dailyStockMap = stockMaps.dailyStockMap;
-        finishedStockMap = stockMaps.finishedStockMap;
-      } catch (stockError) {
-        if (!localBypassEnabled) {
-          throw stockError;
-        }
-
-        console.warn("Localhost menu stock bypass active after stock lookup failed.", stockError);
-        dailyStockMap = buildLocalStockBypassMap(rows);
+      // On localhost, log and continue — MenuClient will re-fetch /api/menu on mount.
+      if (localBypassEnabled) {
+        console.warn("Localhost: get_storefront_menu RPC failed, SSR menu empty.", error.message);
+      } else {
+        console.error("Failed to load storefront menu.", error.message);
       }
-
-      menuItems = rows.map((item) =>
-        mapSharedMenuItem({
-          ...item,
-          dailyStockMap,
-          finishedStockMap
-        })
-      );
+    } else {
+      menuItems = (data as StorefrontMenuRpcRow[] ?? []).map(mapStorefrontMenuRpcRow);
     }
   } catch (error) {
     console.error("Unexpected menu load error.", error);

@@ -32,6 +32,17 @@ function buildAck(payload: PesapalNotificationPayload) {
   return params.toString();
 }
 
+function getProviderBucket(token: string | null | undefined, orderTrackingId: string | null | undefined) {
+  const normalizedToken = token?.trim();
+  const normalizedTrackingId = orderTrackingId?.trim();
+
+  if (!normalizedToken && !normalizedTrackingId) {
+    return null;
+  }
+
+  return `pesapal-ipn:${normalizedToken ?? "missing-token"}:${normalizedTrackingId ?? "missing-tracking"}`;
+}
+
 async function parseNotificationPayload(request: Request): Promise<PesapalNotificationPayload> {
   const url = new URL(request.url);
   const contentType = request.headers.get("content-type") ?? "";
@@ -65,48 +76,7 @@ async function parseNotificationPayload(request: Request): Promise<PesapalNotifi
   };
 }
 
-async function handleNotification(request: Request) {
-  if (request.method === "POST" && isContentLengthTooLarge(request, 16 * 1024)) {
-    return NextResponse.json({ message: "Notification payload is too large." }, { status: 413 });
-  }
-
-  const rateLimit = await enforceRateLimit(request, "payment-ipn", 60, 60_000);
-  if (!rateLimit.allowed) {
-    logSecurityEvent({
-      event: "payment_ipn_rate_limited",
-      severity: "warning",
-      request,
-      details: {
-        retryAfterSeconds: rateLimit.retryAfterSeconds
-      },
-      report: {
-        thresholds: [10, 25, 50]
-      }
-    });
-    return tooManyRequests(rateLimit.retryAfterSeconds);
-  }
-
-  const payload = await parseNotificationPayload(request);
-  const token = payload.OrderMerchantReference?.trim();
-  const orderTrackingId = payload.OrderTrackingId?.trim();
-
-  if (!token || !orderTrackingId) {
-    logSecurityEvent({
-      event: "payment_ipn_missing_identifiers",
-      severity: "warning",
-      request,
-      details: {
-        publicToken: token ?? null,
-        orderTrackingId: orderTrackingId ?? null,
-        notificationType: payload.OrderNotificationType ?? null
-      },
-      report: {
-        thresholds: [3, 10, 25]
-      }
-    });
-    return NextResponse.json({ message: "Missing notification identifiers." }, { status: 400 });
-  }
-
+async function syncNotificationPayment(request: Request, payload: PesapalNotificationPayload, token: string, orderTrackingId: string) {
   try {
     await syncPesapalPaymentForOrder({
       publicToken: token,
@@ -141,10 +111,57 @@ async function handleNotification(request: Request) {
       orderTrackingId,
       error: error instanceof Error ? error.message : "unknown error"
     });
-    return NextResponse.json({ message: "Unable to verify payment." }, { status: 500 });
+  }
+}
+
+async function handleNotification(request: Request) {
+  if (request.method === "POST" && isContentLengthTooLarge(request, 16 * 1024)) {
+    return NextResponse.json({ message: "Notification payload is too large." }, { status: 413 });
+  }
+
+  const payload = await parseNotificationPayload(request);
+  const token = payload.OrderMerchantReference?.trim();
+  const orderTrackingId = payload.OrderTrackingId?.trim();
+  const providerBucket = getProviderBucket(token, orderTrackingId);
+  const rateLimit = await enforceRateLimit(request, "payment-ipn", providerBucket ? 180 : 60, 60_000, {
+    bucketSuffix: providerBucket
+  });
+  if (!rateLimit.allowed) {
+    logSecurityEvent({
+      event: "payment_ipn_rate_limited",
+      severity: "warning",
+      request,
+      details: {
+        publicToken: token ?? null,
+        orderTrackingId: orderTrackingId ?? null,
+        retryAfterSeconds: rateLimit.retryAfterSeconds
+      },
+      report: {
+        thresholds: [10, 25, 50]
+      }
+    });
+    return tooManyRequests(rateLimit.retryAfterSeconds);
+  }
+
+  if (!token || !orderTrackingId) {
+    logSecurityEvent({
+      event: "payment_ipn_missing_identifiers",
+      severity: "warning",
+      request,
+      details: {
+        publicToken: token ?? null,
+        orderTrackingId: orderTrackingId ?? null,
+        notificationType: payload.OrderNotificationType ?? null
+      },
+      report: {
+        thresholds: [3, 10, 25]
+      }
+    });
+    return NextResponse.json({ message: "Missing notification identifiers." }, { status: 400 });
   }
 
   after(async () => {
+    await syncNotificationPayment(request, payload, token, orderTrackingId);
     await scheduleDuePendingPaymentRecovery("pesapal_ipn");
   });
 

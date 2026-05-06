@@ -1,90 +1,85 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isLocalhostBypassEnabledForHost } from "@/lib/local-bypass";
-import { loadSellableStockMaps } from "@/lib/menu-stock";
-import { mapSharedMenuItem, SharedMenuItemRow } from "@/lib/shared-schema";
+import { getUgandaServiceDate } from "@/lib/menu-stock";
+import { mapStorefrontMenuRpcRow, StorefrontMenuRpcRow } from "@/lib/shared-schema";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import type { MenuItem } from "@/lib/types";
 
-export const dynamic = "force-dynamic";
+// No force-dynamic: response is public-only and safe to cache at the edge.
+// Cache-Control is set on each response below.
 
-function buildLocalStockBypassMap(items: SharedMenuItemRow[]) {
-  return new Map(
-    items
-      .map((item) => Number(item.portion_type_id ?? 0))
-      .filter((portionTypeId) => Number.isInteger(portionTypeId) && portionTypeId > 0)
-      .map((portionTypeId) => [portionTypeId, 99])
-  );
-}
+const CACHE_HEADERS = {
+  "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60"
+};
+
+const NO_CACHE_HEADERS = {
+  "Cache-Control": "no-store"
+};
 
 export async function GET(request: NextRequest) {
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("menu_items")
-    .select(
-      `
-      id,
-      name,
-      description,
-      base_price,
-      image_url,
-      prep_type,
-      portion_type_id,
-      is_active,
-      is_available_today,
-      portion_types (
-        portion_label,
-        stock_source_portion_type_id,
-        stock_source_units_per_serving
-      ),
-      menu_categories (
-        code,
-        name
-      )
-    `
-    )
-    .eq("is_active", true)
-    .eq("is_available_today", true)
-    .order("sort_order")
-    .order("name");
+  const serviceDate = getUgandaServiceDate();
 
-  if (error) {
-    return NextResponse.json({ error: "Failed to fetch menu" }, { status: 500 });
+  const { data, error } = await supabase.rpc("get_storefront_menu", {
+    p_service_date: serviceDate
+  });
+
+  if (!error) {
+    return NextResponse.json(
+      (data as StorefrontMenuRpcRow[] ?? []).map(mapStorefrontMenuRpcRow),
+      { headers: CACHE_HEADERS }
+    );
   }
 
-  try {
-    const rows = (data ?? []) as SharedMenuItemRow[];
-    const sourcePortionTypeIds = rows
-      .map((item) => {
-        const pt = Array.isArray(item.portion_types) ? item.portion_types[0] : item.portion_types;
-        return pt?.stock_source_portion_type_id ?? null;
-      })
-      .filter((id): id is number => typeof id === "number" && id > 0);
+  // Localhost fallback: if the RPC is not yet applied (e.g. Phase 39 pending), return stub stock
+  // so local development still works. Never reached in production.
+  const host = request.headers.get("host") ?? request.nextUrl.host;
+  if (isLocalhostBypassEnabledForHost(host)) {
+    console.warn("Localhost: get_storefront_menu RPC failed, using stub stock.", error.message);
 
-    const { dailyStockMap, finishedStockMap } = await loadSellableStockMaps(
-      supabase,
-      rows.map((item) => Number(item.portion_type_id ?? 0)),
-      undefined,
-      sourcePortionTypeIds
-    );
-
-    return NextResponse.json(
-      rows.map((item) =>
-        mapSharedMenuItem({
-          ...item,
-          dailyStockMap,
-          finishedStockMap
-        })
-      )
-    );
-  } catch (stockError) {
-    if (isLocalhostBypassEnabledForHost(request.headers.get("host") ?? request.nextUrl.host)) {
-      console.warn("Localhost menu stock bypass active after stock lookup failed.", stockError);
-      const rows = (data ?? []) as SharedMenuItemRow[];
-      const dailyStockMap = buildLocalStockBypassMap(rows);
-
-      return NextResponse.json(rows.map((item) => mapSharedMenuItem({ ...item, dailyStockMap })));
+    interface FallbackRow {
+      id: unknown;
+      name: string;
+      description: string | null;
+      base_price: unknown;
+      image_url: string | null;
+      prep_type: string | null;
+      is_active: boolean;
+      is_available_today: boolean;
+      portion_types: { portion_label?: string | null } | { portion_label?: string | null }[] | null;
+      menu_categories: { code?: string | null; name?: string | null } | { code?: string | null; name?: string | null }[] | null;
     }
 
-    console.error("Failed to resolve menu stock.", stockError);
-    return NextResponse.json({ error: "Failed to fetch menu" }, { status: 500 });
+    const { data: fallbackRaw } = await supabase
+      .from("menu_items")
+      .select("id,name,description,base_price,image_url,prep_type,is_active,is_available_today,portion_types(portion_label),menu_categories(code,name)")
+      .eq("is_active", true)
+      .eq("is_available_today", true)
+      .order("sort_order")
+      .order("name");
+
+    const fallback = (fallbackRaw as unknown as FallbackRow[] | null) ?? [];
+
+    const items: MenuItem[] = fallback.map((item) => {
+      const pt = Array.isArray(item.portion_types) ? item.portion_types[0] : item.portion_types;
+      const mc = Array.isArray(item.menu_categories) ? item.menu_categories[0] : item.menu_categories;
+      return {
+        id: Number(item.id),
+        name: item.name,
+        description: item.description,
+        category: mc?.code ?? "smokehouse",
+        category_label: mc?.name ?? "Smokehouse",
+        price: Number(item.base_price),
+        image_url: item.image_url,
+        portion_label: pt?.portion_label ?? null,
+        available_quantity: 99,
+        is_available: true
+      };
+    });
+
+    return NextResponse.json(items, { headers: NO_CACHE_HEADERS });
   }
+
+  console.error("get_storefront_menu RPC failed.", error.message);
+  return NextResponse.json({ error: "Failed to fetch menu" }, { status: 500, headers: NO_CACHE_HEADERS });
 }

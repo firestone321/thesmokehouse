@@ -1,4 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
+import { STOREFRONT_LOW_STOCK_COUNT_THRESHOLD } from "@/lib/stock-thresholds";
 
 type LooseTable = {
   Row: Record<string, unknown>;
@@ -96,7 +97,7 @@ export function resolveStockForPortion(
   return {
     availableQuantity,
     isInStock: availableQuantity > 0,
-    isLowStock: availableQuantity >= 1 && availableQuantity <= 10
+    isLowStock: availableQuantity >= 1 && availableQuantity <= STOREFRONT_LOW_STOCK_COUNT_THRESHOLD
   };
 }
 

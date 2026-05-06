@@ -7,6 +7,7 @@ export interface CreateOrderPayload {
   phone: string;
   notes?: string;
   device_id?: string;
+  idempotency_key?: string;
 }
 
 export async function getMenu(): Promise<MenuItem[]> {

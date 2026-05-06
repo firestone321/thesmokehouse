@@ -36,7 +36,9 @@ const READY_PUSH_RETRY_BASE_DELAY_MS = 60_000;
 const READY_PUSH_MAX_RETRY_ATTEMPTS = 5;
 const READY_PUSH_MAX_RETRY_DELAY_MS = 30 * 60_000;
 const READY_PUSH_STALE_CLAIM_SECONDS = 5 * 60;
-const READY_PUSH_DUE_SCAN_LIMIT = 2;
+const READY_PUSH_DUE_SCAN_LIMIT = 10;
+const READY_PUSH_DISPATCH_CONCURRENCY = 3;
+const READY_PUSH_SEND_CONCURRENCY = 5;
 const READY_PUSH_MIN_RUN_INTERVAL_MS = 30_000;
 let readyPushProcessingPromise: Promise<ProcessQueuedOrderReadyPushesResult | null> | null = null;
 let readyPushLastRunAt = 0;
@@ -153,6 +155,32 @@ function getRetryDelayMs(attemptCount: number) {
 
 function isRetryablePushDispatchError(error: unknown) {
   return !(error instanceof PushTriggerError);
+}
+
+async function runLimited<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  if (items.length === 0) {
+    return [];
+  }
+
+  const limit = Math.max(1, Math.min(Math.trunc(concurrency), items.length));
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+
+  await Promise.all(
+    Array.from({ length: limit }, async () => {
+      while (nextIndex < items.length) {
+        const currentIndex = nextIndex;
+        nextIndex += 1;
+        results[currentIndex] = await worker(items[currentIndex], currentIndex);
+      }
+    })
+  );
+
+  return results;
 }
 
 async function reschedulePushDispatch(input: {
@@ -281,8 +309,10 @@ export async function processOrderReadyPushDispatch(idempotencyKey: string) {
       }
     } as const;
 
-    const deliveryResults = await Promise.all(
-      subscriptions.map(async (subscription) => {
+    const deliveryResults = await runLimited(
+      subscriptions,
+      READY_PUSH_SEND_CONCURRENCY,
+      async (subscription) => {
         try {
           await sendWebPushNotification(subscription, payload);
           return {
@@ -315,7 +345,7 @@ export async function processOrderReadyPushDispatch(idempotencyKey: string) {
             errorMessage
           };
         }
-      })
+      }
     );
     const successCount = deliveryResults.filter((result) => result.success).length;
     const staleSubscriptionIds = deliveryResults
@@ -382,23 +412,32 @@ export async function processDueOrderReadyPushes(
   let retried = 0;
   let failed = 0;
 
-  for (const idempotencyKey of idempotencyKeys) {
-    try {
-      const result = await processOrderReadyPushDispatch(idempotencyKey);
-      if (!result) {
-        continue;
-      }
+  const dispatchResults = await runLimited(
+    idempotencyKeys,
+    READY_PUSH_DISPATCH_CONCURRENCY,
+    async (idempotencyKey) => {
+      try {
+        const result = await processOrderReadyPushDispatch(idempotencyKey);
+        if (!result) {
+          return { processed: 0, completed: 0, retried: 0, failed: 0 };
+        }
 
-      processed += 1;
-      completed += 1;
-    } catch (error) {
-      processed += 1;
-      if (isRetryablePushDispatchError(error)) {
-        retried += 1;
-      } else {
-        failed += 1;
+        return { processed: 1, completed: 1, retried: 0, failed: 0 };
+      } catch (error) {
+        if (isRetryablePushDispatchError(error)) {
+          return { processed: 1, completed: 0, retried: 1, failed: 0 };
+        }
+
+        return { processed: 1, completed: 0, retried: 0, failed: 1 };
       }
     }
+  );
+
+  for (const result of dispatchResults) {
+    processed += result.processed;
+    completed += result.completed;
+    retried += result.retried;
+    failed += result.failed;
   }
 
   return {

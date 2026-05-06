@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
 import { loadSellableStockMaps, resolveStockForPortion } from "@/lib/menu-stock";
 import { getUgandaServiceDate } from "@/lib/menu-stock";
 import { ensureGuestDeviceSession } from "@/lib/guest-device";
@@ -44,11 +45,51 @@ interface CreatedOrderRow {
   pickup_code: string | null;
 }
 
+interface ReservationRow {
+  status: string;
+  result_json: Record<string, unknown> | null;
+  expires_at: string;
+  request_hash: string | null;
+  order_id: number | null;
+  public_token: string | null;
+  order_number: string | null;
+  pickup_code: string | null;
+}
+
+type OrderResult = {
+  public_token: string;
+  order_number: string;
+  pickup_code: string | null;
+  payment_status: string;
+  redirect_url: string | null;
+};
+
 function tooManyRequests(retryAfterSeconds: number) {
   return NextResponse.json(
     { error: "Too many requests. Please wait and try again." },
     { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } }
   );
+}
+
+function buildCheckoutRequestHash(input: {
+  items: { menu_item_id: number; qty: number }[];
+  pickup_time: string;
+  name: string;
+  phone: string;
+  notes?: string;
+}) {
+  return crypto
+    .createHash("sha256")
+    .update(
+      JSON.stringify({
+        items: input.items,
+        pickup_time: input.pickup_time,
+        name: input.name.trim(),
+        phone: input.phone.trim(),
+        notes: input.notes?.trim() ?? ""
+      })
+    )
+    .digest("hex");
 }
 
 export async function POST(req: NextRequest) {
@@ -79,6 +120,137 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Item quantity is too large" }, { status: 400 });
   }
 
+  const supabase = getSupabaseAdmin();
+  const idempotencyKey = input.idempotency_key ?? null;
+  const requestHash = buildCheckoutRequestHash(input);
+
+  async function markReservation(status: "complete" | "failed", result?: OrderResult, lastError?: string) {
+    if (!idempotencyKey) return;
+    await supabase
+      .from("checkout_reservations")
+      .update({
+        status,
+        result_json: result ?? null,
+        request_hash: requestHash,
+        last_error: lastError ?? null
+      })
+      .eq("idempotency_key", idempotencyKey)
+      .eq("request_hash", requestHash);
+  }
+
+  async function finishCheckoutForOrder(orderRow: CreatedOrderRow) {
+    try {
+      const payment = await initiateOrderPaymentForOrder(orderRow.public_token, {
+        requestOrigin: resolveSiteOrigin(req.url)
+      });
+      const guestDevice = await ensureGuestDeviceSession();
+      await setOrderAccessCookie({
+        orderId: orderRow.id,
+        publicToken: orderRow.public_token,
+        deviceId: guestDevice.deviceId
+      });
+
+      const result: OrderResult = {
+        public_token: orderRow.public_token,
+        order_number: orderRow.order_number,
+        pickup_code: orderRow.pickup_code,
+        payment_status: payment.paymentStatus,
+        redirect_url: payment.redirectUrl
+      };
+      await markReservation("complete", result);
+      return NextResponse.json(result);
+    } catch (paymentError) {
+      if (
+        isPesapalInitiationRejectedError(paymentError) &&
+        !paymentError.providerReference &&
+        !paymentError.redirectUrl
+      ) {
+        const cancelledSnapshot = await cancelRejectedOrderPaymentInitiation({
+          publicToken: orderRow.public_token,
+          reasonCode: paymentError.code,
+          reasonMessage: paymentError.providerMessage
+        });
+        const guestDevice = await ensureGuestDeviceSession();
+        await setOrderAccessCookie({
+          orderId: orderRow.id,
+          publicToken: orderRow.public_token,
+          deviceId: guestDevice.deviceId
+        });
+
+        const result: OrderResult = {
+          public_token: orderRow.public_token,
+          order_number: orderRow.order_number,
+          pickup_code: orderRow.pickup_code,
+          payment_status: cancelledSnapshot?.paymentStatus ?? "cancelled",
+          redirect_url: null
+        };
+        await markReservation("complete", result);
+        return NextResponse.json(result);
+      }
+
+      console.error("storefront_payment_initiation_failed", {
+        publicToken: orderRow.public_token,
+        error: paymentError instanceof Error ? paymentError.message : "unknown error"
+      });
+
+      await markReservation("failed", undefined, paymentError instanceof Error ? paymentError.message : "unknown_error");
+      return NextResponse.json({ error: "Unable to initiate payment." }, { status: 500 });
+    }
+  }
+
+  // Return early for cached or in-flight reservations — no rate limit consumed.
+  if (idempotencyKey) {
+    const { data: existing } = await supabase
+      .from("checkout_reservations")
+      .select("status,result_json,expires_at,request_hash,order_id,public_token,order_number,pickup_code")
+      .eq("idempotency_key", idempotencyKey)
+      .maybeSingle();
+
+    const row = existing as unknown as ReservationRow | null;
+    if (row) {
+      if (row.request_hash && row.request_hash !== requestHash) {
+        return NextResponse.json(
+          { error: "This checkout session changed. Please reload checkout and try again." },
+          { status: 409 }
+        );
+      }
+
+      const expired = new Date(row.expires_at) <= new Date();
+      if (!expired) {
+        if (row.status === "complete" && row.result_json) {
+          return NextResponse.json(row.result_json);
+        }
+        if (row.status === "processing") {
+          if (row.order_id && row.public_token && row.order_number) {
+            return finishCheckoutForOrder({
+              id: row.order_id,
+              public_token: row.public_token,
+              order_number: row.order_number,
+              pickup_code: row.pickup_code
+            });
+          }
+          return NextResponse.json(
+            { error: "Your order is already being processed. Please wait." },
+            { status: 409 }
+          );
+        }
+      }
+      if (row.order_id && row.public_token && row.order_number) {
+        return finishCheckoutForOrder({
+          id: row.order_id,
+          public_token: row.public_token,
+          order_number: row.order_number,
+          pickup_code: row.pickup_code
+        });
+      }
+      // Failed or expired rows with no order binding are safe to replace.
+      await supabase
+        .from("checkout_reservations")
+        .delete()
+        .eq("idempotency_key", idempotencyKey);
+    }
+  }
+
   const routeRateLimit = await enforceRateLimit(req, "order-create", 8, 10 * 60 * 1000);
   if (!routeRateLimit.allowed) {
     return tooManyRequests(routeRateLimit.retryAfterSeconds);
@@ -95,7 +267,6 @@ export async function POST(req: NextRequest) {
   }
 
   const ids = Array.from(new Set(input.items.map((i) => i.menu_item_id)));
-  const supabase = getSupabaseAdmin();
 
   const { data: menuItems, error: menuError } = await supabase
     .from("menu_items")
@@ -180,113 +351,126 @@ export async function POST(req: NextRequest) {
 
   const promisedAt = pickupSelectionToPromisedAt(input.pickup_time);
   const serviceDate = getUgandaServiceDate(promisedAt ? new Date(promisedAt) : new Date());
-  const guestDevice = await ensureGuestDeviceSession();
 
+  // Claim the reservation before any writes. On concurrent duplicate submissions the
+  // second request will see 'processing' and return 409 instead of creating a second order.
+  let reservationClaimed = false;
+  if (idempotencyKey) {
+    const { error: claimError } = await supabase
+      .from("checkout_reservations")
+      .insert({ idempotency_key: idempotencyKey, request_hash: requestHash });
+
+    if (!claimError) {
+      reservationClaimed = true;
+    } else if (claimError.code === "23505") {
+      // A concurrent request claimed it between our read and this insert.
+      const { data: concurrent } = await supabase
+        .from("checkout_reservations")
+        .select("status,result_json,order_id,public_token,order_number,pickup_code,request_hash")
+        .eq("idempotency_key", idempotencyKey)
+        .maybeSingle();
+
+      const concurrentRow = concurrent as unknown as Pick<
+        ReservationRow,
+        "status" | "result_json" | "order_id" | "public_token" | "order_number" | "pickup_code" | "request_hash"
+      > | null;
+      if (concurrentRow?.request_hash && concurrentRow.request_hash !== requestHash) {
+        return NextResponse.json(
+          { error: "This checkout session changed. Please reload checkout and try again." },
+          { status: 409 }
+        );
+      }
+      if (concurrentRow?.status === "complete" && concurrentRow.result_json) {
+        return NextResponse.json(concurrentRow.result_json);
+      }
+      if (concurrentRow?.order_id && concurrentRow.public_token && concurrentRow.order_number) {
+        return finishCheckoutForOrder({
+          id: concurrentRow.order_id,
+          public_token: concurrentRow.public_token,
+          order_number: concurrentRow.order_number,
+          pickup_code: concurrentRow.pickup_code
+        });
+      }
+      if (concurrentRow?.status === "processing") {
+        return NextResponse.json(
+          { error: "Your order is already being processed. Please wait." },
+          { status: 409 }
+        );
+      }
+      // failed or missing → proceed without reservation (graceful degradation)
+    }
+    // Any other claim error → proceed without reservation
+  }
+
+  // Create order + items atomically. Retry on public_token uniqueness conflicts only.
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const { data: createdOrder, error: orderError } = await getSupabaseAdmin()
-      .from("orders")
-      .insert({
-        public_token: generatePublicToken(),
-        pickup_code: generatePickupCode(),
-        device_id: guestDevice.deviceId,
-        customer_name: input.name,
-        customer_phone: input.phone,
-        notes: input.notes || null,
-        status: "new",
-        payment_status: "pending",
-        payment_provider: "pesapal",
-        service_date: serviceDate,
-        promised_at: promisedAt,
-        total_amount: total
-      })
-      .select("id,order_number,public_token,pickup_code")
-      .single();
+    const publicToken = generatePublicToken();
+    const pickupCode = generatePickupCode();
+    const guestDevice = await ensureGuestDeviceSession();
+    const rpcName = idempotencyKey && reservationClaimed ? "create_storefront_order_for_checkout" : "create_storefront_order";
+    const rpcInput =
+      idempotencyKey && reservationClaimed
+        ? {
+            p_idempotency_key: idempotencyKey,
+            p_request_hash: requestHash,
+            p_public_token: publicToken,
+            p_pickup_code: pickupCode,
+            p_device_id: guestDevice.deviceId,
+            p_customer_name: input.name,
+            p_customer_phone: input.phone,
+            p_notes: input.notes || null,
+            p_service_date: serviceDate,
+            p_promised_at: promisedAt,
+            p_total_amount: total,
+            p_items: JSON.stringify(orderItemsToInsert)
+          }
+        : {
+            p_public_token: publicToken,
+            p_pickup_code: pickupCode,
+            p_device_id: guestDevice.deviceId,
+            p_customer_name: input.name,
+            p_customer_phone: input.phone,
+            p_notes: input.notes || null,
+            p_service_date: serviceDate,
+            p_promised_at: promisedAt,
+            p_total_amount: total,
+            p_items: JSON.stringify(orderItemsToInsert)
+          };
+    const { data: rpcData, error: rpcError } = await supabase.rpc(rpcName, rpcInput);
 
-    if (orderError || !createdOrder) {
-      const isUniqueConflict = orderError?.code === "23505";
-      if (isUniqueConflict) continue;
+    if (rpcError) {
+      if (rpcError.code === "23505") continue; // public_token collision, retry
 
       if (
-        orderError?.message?.includes("null value in column \"order_number\"") ||
-        orderError?.message?.includes("public_token") ||
-        orderError?.message?.includes("pickup_code") ||
-        orderError?.message?.includes("payment_status") ||
-        orderError?.message?.includes("service_date")
+        rpcError.message?.includes("payment_status") ||
+        rpcError.message?.includes("service_date") ||
+        rpcError.message?.includes("public_token") ||
+        rpcError.message?.includes("pickup_code") ||
+        rpcError.message?.includes("create_storefront_order_for_checkout") ||
+        rpcError.message?.includes("checkout_reservations")
       ) {
+        await markReservation("failed");
         return NextResponse.json(
-          { error: "Storefront payment support is not fully applied in Supabase yet. Run Phases 10 and 21 and try again." },
+          { error: "Storefront payment support is not fully applied in Supabase yet. Run Phases 10, 21, 40, and 42 and try again." },
           { status: 500 }
         );
       }
 
+      await markReservation("failed");
       return NextResponse.json({ error: "Failed to create order" }, { status: 500 });
     }
 
-    const orderRow = createdOrder as unknown as CreatedOrderRow;
+    const rows = rpcData as unknown as CreatedOrderRow[];
+    const orderRow = rows?.[0];
 
-    const rows = orderItemsToInsert.map((row) => ({
-      order_id: orderRow.id,
-      ...row
-    }));
-
-    const { error: itemsError } = await getSupabaseAdmin().from("order_items").insert(rows);
-
-    if (itemsError) {
-      await getSupabaseAdmin().from("orders").delete().eq("id", orderRow.id);
-      return NextResponse.json({ error: "Failed to save order items" }, { status: 500 });
+    if (!orderRow) {
+      await markReservation("failed");
+      return NextResponse.json({ error: "Failed to create order" }, { status: 500 });
     }
 
-    try {
-      const payment = await initiateOrderPaymentForOrder(orderRow.public_token, {
-        requestOrigin: resolveSiteOrigin(req.url)
-      });
-      await setOrderAccessCookie({
-        orderId: orderRow.id,
-        publicToken: orderRow.public_token,
-        deviceId: guestDevice.deviceId
-      });
-
-      return NextResponse.json({
-        public_token: orderRow.public_token,
-        order_number: orderRow.order_number,
-        pickup_code: orderRow.pickup_code,
-        payment_status: payment.paymentStatus,
-        redirect_url: payment.redirectUrl
-      });
-    } catch (paymentError) {
-      if (
-        isPesapalInitiationRejectedError(paymentError) &&
-        !paymentError.providerReference &&
-        !paymentError.redirectUrl
-      ) {
-        const cancelledSnapshot = await cancelRejectedOrderPaymentInitiation({
-          publicToken: orderRow.public_token,
-          reasonCode: paymentError.code,
-          reasonMessage: paymentError.providerMessage
-        });
-        await setOrderAccessCookie({
-          orderId: orderRow.id,
-          publicToken: orderRow.public_token,
-          deviceId: guestDevice.deviceId
-        });
-
-        return NextResponse.json({
-          public_token: orderRow.public_token,
-          order_number: orderRow.order_number,
-          pickup_code: orderRow.pickup_code,
-          payment_status: cancelledSnapshot?.paymentStatus ?? "cancelled",
-          redirect_url: null
-        });
-      }
-
-      console.error("storefront_payment_initiation_failed", {
-        publicToken: orderRow.public_token,
-        error: paymentError instanceof Error ? paymentError.message : "unknown error"
-      });
-
-      return NextResponse.json({ error: "Unable to initiate payment." }, { status: 500 });
-    }
+    return finishCheckoutForOrder(orderRow);
   }
 
+  await markReservation("failed");
   return NextResponse.json({ error: "Could not generate secure order token" }, { status: 500 });
 }

@@ -7,6 +7,7 @@ import { MenuItem } from "@/lib/types";
 import { formatCurrency } from "@/lib/format";
 import { useCartStore } from "@/lib/store";
 import { useCartHydration } from "@/lib/use-cart-hydration";
+import { STOREFRONT_LOW_STOCK_COUNT_THRESHOLD } from "@/lib/stock-thresholds";
 
 export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
   const [active, setActive] = useState<string>("");
@@ -122,7 +123,7 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
               const isOutOfStock = !item.is_available;
               const stockMessage = isOutOfStock
                 ? "Out of stock"
-                : item.available_quantity <= 10
+                : item.available_quantity <= STOREFRONT_LOW_STOCK_COUNT_THRESHOLD
                   ? `Only ${item.available_quantity} left`
                   : null;
 

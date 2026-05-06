@@ -27,7 +27,8 @@ export const createOrderSchema = z.object({
     .min(8)
     .max(128)
     .regex(/^[A-Za-z0-9_-]+$/)
-    .optional()
+    .optional(),
+  idempotency_key: z.string().uuid().optional()
 });
 
 export function getClientIp(headerValue: string | null): string {

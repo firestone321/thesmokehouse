@@ -122,6 +122,41 @@ export interface SharedMenuItemRow {
   finishedStockMap?: Map<number, number>;
 }
 
+export interface StorefrontMenuRpcRow {
+  id: number;
+  name: string;
+  description: string | null;
+  base_price: number;
+  image_url: string | null;
+  prep_type: string | null;
+  portion_label: string | null;
+  category_code: string | null;
+  category_name: string | null;
+  is_active: boolean;
+  is_available_today: boolean;
+  available_quantity: number;
+}
+
+export function mapStorefrontMenuRpcRow(row: StorefrontMenuRpcRow): MenuItem {
+  const category = mapPrepTypeToMenuCategory(row.prep_type, {
+    code: row.category_code,
+    name: row.category_name
+  });
+  const available_quantity = Math.max(0, toNumber(row.available_quantity));
+  return {
+    id: toNumber(row.id),
+    name: row.name,
+    description: row.description,
+    category: category.code,
+    category_label: category.label,
+    price: toNumber(row.base_price),
+    image_url: row.image_url,
+    portion_label: row.portion_label ?? null,
+    available_quantity,
+    is_available: Boolean(row.is_active) && Boolean(row.is_available_today) && available_quantity > 0
+  };
+}
+
 export function mapSharedMenuItem(row: SharedMenuItemRow): MenuItem {
   const category = mapPrepTypeToMenuCategory(row.prep_type, row.menu_categories ?? null);
   const portionType = unwrapRelation(row.portion_types ?? null);

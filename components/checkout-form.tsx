@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useMemo, useRef, useState } from "react";
 import { useCartStore } from "@/lib/store";
 import { createOrder } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
@@ -18,6 +18,7 @@ export function CheckoutForm() {
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const idempotencyKey = useRef(crypto.randomUUID());
 
   const safeItems = hydrated ? items : [];
   const safeTotal = hydrated ? total() : 0;
@@ -40,7 +41,8 @@ export function CheckoutForm() {
         pickup_time: pickupTime,
         name: name.trim(),
         phone: phone.trim(),
-        notes: notes.trim()
+        notes: notes.trim(),
+        idempotency_key: idempotencyKey.current
       });
 
       rememberGuestOrder(result.public_token);

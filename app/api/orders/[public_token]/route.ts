@@ -1,7 +1,9 @@
 import { after, NextResponse } from "next/server";
 import { clearOrderAccessCookie, resolveOrderReadAccess, syncOrderAccessCookie } from "@/lib/order-access";
+import { logSecurityEvent } from "@/lib/observability/security-events";
 import { scheduleDuePendingPaymentRecovery } from "@/lib/payments/order-payments";
 import { scheduleDueOrderReadyPushProcessing } from "@/lib/push/order-ready";
+import { enforceRateLimit } from "@/lib/rate-limit";
 import { mapSharedOrder } from "@/lib/shared-schema";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
@@ -37,8 +39,34 @@ interface CustomerOrderRow {
   }>;
 }
 
+function tooManyRequests(retryAfterSeconds: number) {
+  return NextResponse.json(
+    { error: "Too many requests. Please wait and try again." },
+    { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } }
+  );
+}
+
 export async function GET(req: Request, { params }: Params) {
   const { public_token } = await params;
+  const rateLimit = await enforceRateLimit(req, "order-detail", 60, 60_000, {
+    bucketSuffix: public_token
+  });
+
+  if (!rateLimit.allowed) {
+    logSecurityEvent({
+      event: "order_detail_rate_limited",
+      severity: "warning",
+      request: req,
+      details: {
+        publicToken: public_token,
+        retryAfterSeconds: rateLimit.retryAfterSeconds
+      },
+      report: {
+        thresholds: [20, 40, 80]
+      }
+    });
+    return tooManyRequests(rateLimit.retryAfterSeconds);
+  }
 
   const { data: accessData, error: accessError } = await getSupabaseAdmin()
     .from("orders")

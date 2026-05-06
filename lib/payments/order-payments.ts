@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { toKampalaDateTimeString } from "@/lib/format";
 import {
@@ -48,21 +49,33 @@ type PaymentAttemptRow = {
   attempt_number: number;
 };
 
-const PENDING_PAYMENT_RECOVERY_SOFT_CANCEL_MS = 7 * 60_000;
-const PENDING_PAYMENT_RECOVERY_LOOKBACK_MS = 2 * 60 * 60_000;
-const PENDING_PAYMENT_RECOVERY_VERIFY_THROTTLE_MS = 5 * 60_000;
-const PENDING_PAYMENT_RECOVERY_SCAN_LIMIT = 12;
-const PENDING_PAYMENT_RECOVERY_PROCESS_LIMIT = 2;
-const PENDING_PAYMENT_RECOVERY_MIN_RUN_INTERVAL_MS = 30_000;
+type PendingPaymentRecoveryRow = {
+  id: number;
+  order_id: number;
+  provider: string;
+  order_tracking_id: string;
+  status: string;
+  attempt_count: number;
+  max_attempts: number;
+};
 
-let pendingPaymentRecoveryLastRunAt = 0;
+const PENDING_PAYMENT_RECOVERY_SOFT_CANCEL_MS = 7 * 60_000;
+const PENDING_PAYMENT_RECOVERY_VERIFY_THROTTLE_MS = 5 * 60_000;
+const PENDING_PAYMENT_RECOVERY_SCAN_LIMIT = 50;
+const PENDING_PAYMENT_RECOVERY_PROCESS_LIMIT = 5;
+const PENDING_PAYMENT_RECOVERY_MAX_BACKOFF_MS = 15 * 60_000;
+const PENDING_PAYMENT_RECOVERY_MIN_BACKOFF_MS = 30_000;
+
 let pendingPaymentRecoveryPromise: Promise<PendingPaymentRecoveryStats> | null = null;
 
 export type PendingPaymentRecoveryStats = {
   trigger: string;
   trackedScanned: number;
+  trackedClaimed: number;
   trackedVerified: number;
   trackedCancelled: number;
+  trackedCompleted: number;
+  trackedRescheduled: number;
   errors: string[];
 };
 
@@ -321,6 +334,166 @@ async function updateActivePaymentAttempt(order: OrderPaymentRow, input: {
   await getSupabaseAdmin().from("payment_attempts").update(payload).eq("id", order.active_payment_attempt_id);
 }
 
+function buildPaymentRecoveryWorkerId(trigger: string) {
+  return `${trigger}:${randomUUID()}`;
+}
+
+function getPaymentRecoveryBackoffMs(attemptCount: number) {
+  const delayMs = Math.max(PENDING_PAYMENT_RECOVERY_MIN_BACKOFF_MS, attemptCount * 60_000);
+  return Math.min(delayMs, PENDING_PAYMENT_RECOVERY_MAX_BACKOFF_MS);
+}
+
+async function enqueuePendingPaymentRecovery(input: {
+  orderId: number;
+  orderTrackingId?: string | null;
+  reason?: string | null;
+}) {
+  const orderTrackingId = input.orderTrackingId?.trim();
+  if (!orderTrackingId) {
+    return null;
+  }
+
+  const { data, error } = await getSupabaseAdmin().rpc("enqueue_pending_payment_recovery", {
+    p_order_id: input.orderId,
+    p_order_tracking_id: orderTrackingId,
+    p_provider: "pesapal",
+    p_reason: input.reason ?? null
+  });
+
+  if (error) {
+    throw new Error(`Unable to enqueue pending payment recovery: ${error.message}`);
+  }
+
+  return data;
+}
+
+async function enqueuePendingPaymentRecoverySafely(input: {
+  orderId: number;
+  orderTrackingId?: string | null;
+  reason?: string | null;
+}) {
+  try {
+    await enqueuePendingPaymentRecovery(input);
+  } catch (error) {
+    console.error("pending_payment_recovery_enqueue_failed", {
+      orderId: input.orderId,
+      orderTrackingId: input.orderTrackingId ?? null,
+      error: error instanceof Error ? error.message : "unknown_error"
+    });
+  }
+}
+
+async function enqueueDueTrackedPendingPaymentsForRecovery(limit = PENDING_PAYMENT_RECOVERY_SCAN_LIMIT) {
+  const normalizedLimit = Math.max(1, Math.min(limit, 200));
+  const { data, error } = await getSupabaseAdmin()
+    .from("orders")
+    .select("id, order_tracking_id, payment_last_verified_at")
+    .not("order_tracking_id", "is", null)
+    .or("payment_status.is.null,payment_status.eq.unpaid,payment_status.eq.pending,payment_status.eq.cancelled,payment_status.eq.canceled")
+    .order("created_at", { ascending: true })
+    .limit(normalizedLimit);
+
+  if (error) {
+    throw new Error(`Unable to list tracked pending payments for recovery: ${error.message}`);
+  }
+
+  const nowMs = Date.now();
+  let enqueued = 0;
+  for (const row of (data ?? []) as Array<{ id: number; order_tracking_id: string | null; payment_last_verified_at: string | null }>) {
+    if (
+      row.order_tracking_id &&
+      isOlderThan(row.payment_last_verified_at, PENDING_PAYMENT_RECOVERY_VERIFY_THROTTLE_MS, nowMs)
+    ) {
+      await enqueuePendingPaymentRecovery({
+        orderId: row.id,
+        orderTrackingId: row.order_tracking_id,
+        reason: "Pending tracked payment found during recovery scan."
+      });
+      enqueued += 1;
+    }
+  }
+
+  return enqueued;
+}
+
+async function claimPendingPaymentRecoveries(input: {
+  trigger: string;
+  limit?: number;
+  orderId?: number | null;
+}) {
+  const { data, error } = await getSupabaseAdmin().rpc("claim_pending_payment_recoveries", {
+    p_limit: Math.max(1, Math.min(input.limit ?? PENDING_PAYMENT_RECOVERY_PROCESS_LIMIT, 25)),
+    p_worker_id: buildPaymentRecoveryWorkerId(input.trigger),
+    p_order_id: input.orderId ?? null
+  });
+
+  if (error) {
+    throw new Error(`Unable to claim pending payment recoveries: ${error.message}`);
+  }
+
+  return ((data ?? []) as PendingPaymentRecoveryRow[]).filter((row) => row.order_tracking_id);
+}
+
+async function completePendingPaymentRecovery(id: number) {
+  const { error } = await getSupabaseAdmin()
+    .from("pending_payment_recoveries")
+    .update({
+      status: "completed",
+      completed_at: new Date().toISOString(),
+      last_verified_at: new Date().toISOString(),
+      locked_at: null,
+      locked_by: null,
+      last_error: null
+    })
+    .eq("id", id);
+
+  if (error) {
+    throw new Error(`Unable to complete pending payment recovery: ${error.message}`);
+  }
+}
+
+async function completePendingPaymentRecoveryByTracking(orderTrackingId: string) {
+  const { error } = await getSupabaseAdmin()
+    .from("pending_payment_recoveries")
+    .update({
+      status: "completed",
+      completed_at: new Date().toISOString(),
+      last_verified_at: new Date().toISOString(),
+      locked_at: null,
+      locked_by: null,
+      last_error: null
+    })
+    .eq("provider", "pesapal")
+    .eq("order_tracking_id", orderTrackingId);
+
+  if (error) {
+    console.error("pending_payment_recovery_complete_by_tracking_failed", {
+      orderTrackingId,
+      error: error.message
+    });
+  }
+}
+
+async function reschedulePendingPaymentRecovery(row: PendingPaymentRecoveryRow, message: string) {
+  const exhausted = row.attempt_count >= row.max_attempts;
+  const nextAttemptAt = new Date(Date.now() + getPaymentRecoveryBackoffMs(row.attempt_count)).toISOString();
+  const { error } = await getSupabaseAdmin()
+    .from("pending_payment_recoveries")
+    .update({
+      status: exhausted ? "failed" : "retrying",
+      next_attempt_at: exhausted ? new Date().toISOString() : nextAttemptAt,
+      last_verified_at: new Date().toISOString(),
+      locked_at: null,
+      locked_by: null,
+      last_error: message
+    })
+    .eq("id", row.id);
+
+  if (error) {
+    throw new Error(`Unable to reschedule pending payment recovery: ${error.message}`);
+  }
+}
+
 export async function initiateOrderPaymentForOrder(publicToken: string, options: { requestOrigin: string }) {
   const row = await getOrderPaymentRow(publicToken);
   if (!row) {
@@ -337,6 +510,12 @@ export async function initiateOrderPaymentForOrder(publicToken: string, options:
   }
 
   if (row.order_tracking_id && row.payment_redirect_url && paymentStatus === "pending") {
+    await enqueuePendingPaymentRecoverySafely({
+      orderId: row.id,
+      orderTrackingId: row.order_tracking_id,
+      reason: "Existing tracked pending payment reused for checkout."
+    });
+
     return {
       publicToken: row.public_token,
       redirectUrl: row.payment_redirect_url,
@@ -387,6 +566,12 @@ export async function initiateOrderPaymentForOrder(publicToken: string, options:
   if (error) {
     throw new Error(`Unable to save payment initiation: ${error.message}`);
   }
+
+  await enqueuePendingPaymentRecoverySafely({
+    orderId: row.id,
+    orderTrackingId: response.order_tracking_id ?? null,
+    reason: "Pesapal payment initiation created a tracked pending payment."
+  });
 
   return {
     publicToken: row.public_token,
@@ -521,7 +706,7 @@ export async function markOrderPaymentCancelled(publicToken: string) {
   return buildSnapshot(refreshed, { hint: "cancelled" });
 }
 
-export async function syncPesapalPaymentForOrder(input: {
+async function verifyPesapalPaymentForOrder(input: {
   publicToken: string;
   orderTrackingId?: string | null;
 }) {
@@ -532,8 +717,17 @@ export async function syncPesapalPaymentForOrder(input: {
 
   const trackingId = input.orderTrackingId ?? row.order_tracking_id;
   if (!trackingId) {
-    return buildSnapshot(row);
+    return {
+      snapshot: buildSnapshot(row),
+      providerPaymentStatus: null as PaymentStatus | null
+    };
   }
+
+  await enqueuePendingPaymentRecoverySafely({
+    orderId: row.id,
+    orderTrackingId: trackingId,
+    reason: "Payment verification observed a tracked pending payment."
+  });
 
   const status = await getPesapalTransactionStatus(trackingId);
   const storedPaymentStatus = normalizeStoredPaymentStatus(row.payment_status);
@@ -581,7 +775,7 @@ export async function syncPesapalPaymentForOrder(input: {
 
   await updateActivePaymentAttempt(row, {
     paymentStatus: status.paymentStatus === "paid" ? "paid" : nextNonPaidPaymentStatus,
-    lifecycleStatus: status.paymentStatus === "paid" ? "initiated" : "failed",
+    lifecycleStatus: status.paymentStatus === "failed" ? "failed" : "initiated",
     providerReference: trackingId,
     providerStatus: status.providerStatus,
     paymentReference: status.paymentReference,
@@ -593,7 +787,23 @@ export async function syncPesapalPaymentForOrder(input: {
     throw new Error("Order not found.");
   }
 
-  return buildSnapshot(refreshed, { verified: normalizeStoredPaymentStatus(refreshed.payment_status) === "paid" });
+  const snapshot = buildSnapshot(refreshed, { verified: normalizeStoredPaymentStatus(refreshed.payment_status) === "paid" });
+  if (status.paymentStatus === "paid" || status.paymentStatus === "failed") {
+    await completePendingPaymentRecoveryByTracking(trackingId);
+  }
+
+  return {
+    snapshot,
+    providerPaymentStatus: status.paymentStatus
+  };
+}
+
+export async function syncPesapalPaymentForOrder(input: {
+  publicToken: string;
+  orderTrackingId?: string | null;
+}) {
+  const result = await verifyPesapalPaymentForOrder(input);
+  return result.snapshot;
 }
 
 function isOlderThan(isoDate: string | null | undefined, thresholdMs: number, nowMs: number) {
@@ -609,69 +819,8 @@ function isOlderThan(isoDate: string | null | undefined, thresholdMs: number, no
   return nowMs - valueMs >= thresholdMs;
 }
 
-function isTrackedPendingPaymentEligibleForRecovery(row: OrderPaymentRow, nowMs: number) {
-  return (
-    row.status === "new" &&
-    normalizeStoredPaymentStatus(row.payment_status) === "pending" &&
-    Boolean(row.order_tracking_id) &&
-    isOlderThan(row.payment_last_verified_at, PENDING_PAYMENT_RECOVERY_VERIFY_THROTTLE_MS, nowMs)
-  );
-}
-
 function isTrackedPendingPaymentExpired(row: OrderPaymentRow, nowMs: number) {
   return isOlderThan(row.created_at, PENDING_PAYMENT_RECOVERY_SOFT_CANCEL_MS, nowMs);
-}
-
-async function listRecentTrackedPendingOrdersForRecovery(nowMs: number) {
-  const createdAfter = new Date(nowMs - PENDING_PAYMENT_RECOVERY_LOOKBACK_MS).toISOString();
-  const { data, error } = await getSupabaseAdmin()
-    .from("orders")
-    .select(
-      `
-      id,
-      order_number,
-      public_token,
-      created_at,
-      updated_at,
-      pickup_code,
-      customer_name,
-      customer_phone,
-      status,
-      payment_status,
-      total_amount,
-      promised_at,
-      payment_provider,
-      payment_reference,
-      payment_redirect_url,
-      order_tracking_id,
-      payment_last_verified_at,
-      paid_at,
-      payment_initiation_failure_code,
-      payment_initiation_failure_message,
-      payment_initiation_failed_at,
-      active_payment_attempt_id,
-      stock_reserved_at,
-      order_items (
-        id,
-        menu_item_id,
-        menu_item_name,
-        quantity,
-        unit_price
-      )
-    `
-    )
-    .eq("status", "new")
-    .eq("payment_status", "pending")
-    .not("order_tracking_id", "is", null)
-    .gte("created_at", createdAfter)
-    .order("created_at", { ascending: true })
-    .limit(PENDING_PAYMENT_RECOVERY_SCAN_LIMIT);
-
-  if (error) {
-    throw new Error(`Unable to list pending tracked payments: ${error.message}`);
-  }
-
-  return (data as OrderPaymentRow[] | null) ?? [];
 }
 
 async function cancelExpiredPendingPayment(row: OrderPaymentRow, reasonMessage: string) {
@@ -703,46 +852,115 @@ async function cancelExpiredPendingPayment(row: OrderPaymentRow, reasonMessage: 
   }
 }
 
-export async function reconcileDuePendingPayments(trigger: string): Promise<PendingPaymentRecoveryStats> {
+async function processClaimedPendingPaymentRecovery(
+  row: PendingPaymentRecoveryRow,
+  nowMs: number
+): Promise<"completed" | "rescheduled" | "cancelled"> {
+  const order = await getOrderPaymentRowById(row.order_id);
+  if (!order) {
+    await reschedulePendingPaymentRecovery(row, "Order no longer exists for pending payment recovery.");
+    return "rescheduled";
+  }
+
+  const storedPaymentStatus = normalizeStoredPaymentStatus(order.payment_status);
+  if (storedPaymentStatus === "paid") {
+    await completePendingPaymentRecovery(row.id);
+    return "completed";
+  }
+
+  const orderTrackingId = row.order_tracking_id || order.order_tracking_id;
+  if (!orderTrackingId) {
+    await reschedulePendingPaymentRecovery(row, "Order does not have a Pesapal tracking ID.");
+    return "rescheduled";
+  }
+
+  const verification = await verifyPesapalPaymentForOrder({
+    publicToken: order.public_token,
+    orderTrackingId
+  });
+
+  const refreshed = await getOrderPaymentRowById(order.id);
+  const refreshedPaymentStatus = normalizeStoredPaymentStatus(refreshed?.payment_status);
+
+  if (
+    verification.providerPaymentStatus === "paid" ||
+    verification.providerPaymentStatus === "failed" ||
+    refreshedPaymentStatus === "paid" ||
+    refreshedPaymentStatus === "failed"
+  ) {
+    await completePendingPaymentRecovery(row.id);
+    return "completed";
+  }
+
+  if (
+    refreshed &&
+    refreshed.status === "new" &&
+    refreshedPaymentStatus === "pending" &&
+    refreshed.order_tracking_id &&
+    isTrackedPendingPaymentExpired(refreshed, nowMs)
+  ) {
+    await cancelExpiredPendingPayment(
+      refreshed,
+      "Payment was not completed before the pending checkout window expired."
+    );
+    await reschedulePendingPaymentRecovery(
+      row,
+      "Provider still reports pending after local soft-cancel; keeping recovery active for late paid truth."
+    );
+    return "cancelled";
+  }
+
+  await reschedulePendingPaymentRecovery(row, "Provider still reports pending.");
+  return "rescheduled";
+}
+
+export async function reconcileDuePendingPayments(
+  trigger: string,
+  options?: { limit?: number }
+): Promise<PendingPaymentRecoveryStats> {
   const nowMs = Date.now();
   const stats: PendingPaymentRecoveryStats = {
     trigger,
     trackedScanned: 0,
+    trackedClaimed: 0,
     trackedVerified: 0,
     trackedCancelled: 0,
+    trackedCompleted: 0,
+    trackedRescheduled: 0,
     errors: []
   };
 
   try {
-    const trackedRows = await listRecentTrackedPendingOrdersForRecovery(nowMs);
-    const dueTrackedRows = trackedRows
-      .filter((row) => isTrackedPendingPaymentEligibleForRecovery(row, nowMs))
-      .slice(0, PENDING_PAYMENT_RECOVERY_PROCESS_LIMIT);
-    stats.trackedScanned = trackedRows.length;
+    stats.trackedScanned = await enqueueDueTrackedPendingPaymentsForRecovery();
+    const claimedRows = await claimPendingPaymentRecoveries({
+      trigger,
+      limit: options?.limit ?? PENDING_PAYMENT_RECOVERY_PROCESS_LIMIT
+    });
+    stats.trackedClaimed = claimedRows.length;
 
-    for (const row of dueTrackedRows) {
+    for (const row of claimedRows) {
       try {
-        await syncPesapalPaymentForOrder({
-          publicToken: row.public_token,
-          orderTrackingId: row.order_tracking_id
-        });
+        const result = await processClaimedPendingPaymentRecovery(row, nowMs);
         stats.trackedVerified += 1;
-
-        const refreshed = await getOrderPaymentRowById(row.id);
-        if (
-          refreshed &&
-          refreshed.status === "new" &&
-          normalizeStoredPaymentStatus(refreshed.payment_status) === "pending" &&
-          refreshed.order_tracking_id &&
-          isTrackedPendingPaymentExpired(refreshed, nowMs)
-        ) {
-          await cancelExpiredPendingPayment(
-            refreshed,
-            "Payment was not completed before the pending checkout window expired."
-          );
-          stats.trackedCancelled += 1;
+        if (result === "completed") {
+          stats.trackedCompleted += 1;
+        } else {
+          stats.trackedRescheduled += 1;
+          if (result === "cancelled") {
+            stats.trackedCancelled += 1;
+          }
         }
       } catch (error) {
+        await reschedulePendingPaymentRecovery(
+          row,
+          error instanceof Error ? error.message : "Unable to recover pending tracked payment."
+        ).catch((rescheduleError) => {
+          stats.errors.push(
+            rescheduleError instanceof Error
+              ? rescheduleError.message
+              : "Unable to reschedule failed pending payment recovery."
+          );
+        });
         stats.errors.push(error instanceof Error ? error.message : "Unable to recover pending tracked payment.");
       }
     }
@@ -758,22 +976,10 @@ export async function reconcileDuePendingPayments(trigger: string): Promise<Pend
 }
 
 export function scheduleDuePendingPaymentRecovery(trigger: string) {
-  const nowMs = Date.now();
   if (pendingPaymentRecoveryPromise) {
     return pendingPaymentRecoveryPromise;
   }
 
-  if (nowMs - pendingPaymentRecoveryLastRunAt < PENDING_PAYMENT_RECOVERY_MIN_RUN_INTERVAL_MS) {
-    return Promise.resolve<PendingPaymentRecoveryStats>({
-      trigger,
-      trackedScanned: 0,
-      trackedVerified: 0,
-      trackedCancelled: 0,
-      errors: []
-    });
-  }
-
-  pendingPaymentRecoveryLastRunAt = nowMs;
   pendingPaymentRecoveryPromise = reconcileDuePendingPayments(trigger).finally(() => {
     pendingPaymentRecoveryPromise = null;
   });
