@@ -10,6 +10,7 @@ import {
   processOrderReadyPushDispatch,
   scheduleDueOrderReadyPushProcessing
 } from "@/lib/push/order-ready";
+import { readJsonWithLimit, RequestBodyTooLargeError } from "@/lib/request-limits";
 
 export const runtime = "nodejs";
 
@@ -21,7 +22,16 @@ const kickoffBodySchema = z.object({
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json().catch(() => null);
+    const body = await readJsonWithLimit(request, 4 * 1024).catch((error) => {
+      if (error instanceof RequestBodyTooLargeError) {
+        return "payload_too_large";
+      }
+      return null;
+    });
+    if (body === "payload_too_large") {
+      return NextResponse.json({ message: "Push processing payload is too large." }, { status: 413 });
+    }
+
     const parsed = kickoffBodySchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(

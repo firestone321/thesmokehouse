@@ -3,7 +3,7 @@ import { captureOperationalIncident } from "@/lib/ops/incidents";
 import { logSecurityEvent } from "@/lib/observability/security-events";
 import { scheduleDuePendingPaymentRecovery, syncPesapalPaymentForOrder } from "@/lib/payments/order-payments";
 import { enforceRateLimit } from "@/lib/rate-limit";
-import { isContentLengthTooLarge } from "@/lib/request-limits";
+import { readJsonWithLimit, readRequestTextWithLimit, RequestBodyTooLargeError } from "@/lib/request-limits";
 
 type PesapalNotificationPayload = {
   OrderNotificationType?: string | null;
@@ -56,16 +56,22 @@ async function parseNotificationPayload(request: Request): Promise<PesapalNotifi
   }
 
   if (contentType.includes("application/json")) {
-    const body = (await request.json().catch(() => null)) as PesapalNotificationPayload | null;
-    return body ?? {};
+    try {
+      return (await readJsonWithLimit<PesapalNotificationPayload>(request, 16 * 1024)) ?? {};
+    } catch (error) {
+      if (error instanceof RequestBodyTooLargeError) {
+        throw error;
+      }
+      return {};
+    }
   }
 
   if (contentType.includes("application/x-www-form-urlencoded")) {
-    const form = await request.formData();
+    const form = new URLSearchParams(await readRequestTextWithLimit(request, 16 * 1024));
     return {
-      OrderNotificationType: String(form.get("OrderNotificationType") ?? ""),
-      OrderTrackingId: String(form.get("OrderTrackingId") ?? ""),
-      OrderMerchantReference: String(form.get("OrderMerchantReference") ?? "")
+      OrderNotificationType: form.get("OrderNotificationType") ?? "",
+      OrderTrackingId: form.get("OrderTrackingId") ?? "",
+      OrderMerchantReference: form.get("OrderMerchantReference") ?? ""
     };
   }
 
@@ -115,11 +121,21 @@ async function syncNotificationPayment(request: Request, payload: PesapalNotific
 }
 
 async function handleNotification(request: Request) {
-  if (request.method === "POST" && isContentLengthTooLarge(request, 16 * 1024)) {
+  const payload = await parseNotificationPayload(request).catch((error) => {
+    if (error instanceof RequestBodyTooLargeError) {
+      return "payload_too_large" as const;
+    }
+    return null;
+  });
+
+  if (payload === "payload_too_large") {
     return NextResponse.json({ message: "Notification payload is too large." }, { status: 413 });
   }
 
-  const payload = await parseNotificationPayload(request);
+  if (!payload) {
+    return NextResponse.json({ message: "Invalid notification payload." }, { status: 400 });
+  }
+
   const token = payload.OrderMerchantReference?.trim();
   const orderTrackingId = payload.OrderTrackingId?.trim();
   const providerBucket = getProviderBucket(token, orderTrackingId);

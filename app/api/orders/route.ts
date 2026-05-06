@@ -11,7 +11,7 @@ import {
   isPesapalInitiationRejectedError
 } from "@/lib/payments/order-payments";
 import { enforceRateLimit } from "@/lib/rate-limit";
-import { isContentLengthTooLarge } from "@/lib/request-limits";
+import { readJsonWithLimit, RequestBodyTooLargeError } from "@/lib/request-limits";
 import { resolveSiteOrigin } from "@/lib/site-url";
 import { pickupSelectionToPromisedAt } from "@/lib/shared-schema";
 import { getSupabaseAdmin } from "@/lib/supabase";
@@ -93,11 +93,17 @@ function buildCheckoutRequestHash(input: {
 }
 
 export async function POST(req: NextRequest) {
-  if (isContentLengthTooLarge(req, 32 * 1024)) {
+  const body = await readJsonWithLimit(req, 32 * 1024).catch((error) => {
+    if (error instanceof RequestBodyTooLargeError) {
+      return "payload_too_large";
+    }
+    return null;
+  });
+
+  if (body === "payload_too_large") {
     return NextResponse.json({ error: "Order payload is too large." }, { status: 413 });
   }
 
-  const body = await req.json().catch(() => null);
   const parsed = createOrderSchema.safeParse(body);
 
   if (!parsed.success) {

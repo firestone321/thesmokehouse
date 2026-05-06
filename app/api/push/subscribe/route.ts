@@ -4,7 +4,7 @@ import { ensureGuestDeviceSession } from "@/lib/guest-device";
 import { clearOrderAccessCookie, resolveOrderReadAccess } from "@/lib/order-access";
 import { scheduleDueOrderReadyPushProcessing } from "@/lib/push/order-ready";
 import { enforceRateLimit } from "@/lib/rate-limit";
-import { isContentLengthTooLarge } from "@/lib/request-limits";
+import { readJsonWithLimit, RequestBodyTooLargeError } from "@/lib/request-limits";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 const pushSubscriptionSchema = z.object({
@@ -93,10 +93,6 @@ export async function POST(request: Request) {
     return originViolation;
   }
 
-  if (isContentLengthTooLarge(request, 16 * 1024)) {
-    return NextResponse.json({ message: "Push subscription payload is too large." }, { status: 413 });
-  }
-
   const routeRateLimit = await enforceRateLimit(request, "push-subscribe", 12, 60_000);
   if (!routeRateLimit.allowed) {
     return NextResponse.json(
@@ -105,7 +101,17 @@ export async function POST(request: Request) {
     );
   }
 
-  const body = await request.json().catch(() => null);
+  const body = await readJsonWithLimit(request, 16 * 1024).catch((error) => {
+    if (error instanceof RequestBodyTooLargeError) {
+      return "payload_too_large";
+    }
+    return null;
+  });
+
+  if (body === "payload_too_large") {
+    return NextResponse.json({ message: "Push subscription payload is too large." }, { status: 413 });
+  }
+
   const parsed = pushSubscriptionSchema.safeParse(body);
 
   if (!parsed.success) {
