@@ -12,6 +12,7 @@ interface CartState {
   setHasHydrated: (value: boolean) => void;
   addItem: (item: CartLineInput, accompaniments?: CartAccompanimentInput[]) => void;
   updateQty: (menu_item_id: number, qty: number) => void;
+  setGroupAddOn: (parent_menu_item_id: number, accompaniment: CartAccompanimentInput, enabled: boolean) => void;
   updateAccompanimentQty: (parent_menu_item_id: number, menu_item_id: number, qty: number) => void;
   removeItem: (menu_item_id: number) => void;
   removeAccompaniment: (parent_menu_item_id: number, menu_item_id: number) => void;
@@ -86,24 +87,15 @@ export const useCartStore = create<CartState>()(
 
         if (existing) {
           set({
-            items: get().items.map((i) => {
-              if (i.menu_item_id !== item.menu_item_id) {
-                return i;
-              }
-
-              const existingAddonIds = new Set((i.accompaniments ?? []).map((accompaniment) => accompaniment.menu_item_id));
-              const nextAccompaniments = [
-                ...(i.accompaniments ?? []),
-                ...selectedAccompaniments.filter((accompaniment) => !existingAddonIds.has(accompaniment.menu_item_id))
-              ];
-
-              return {
-                ...i,
-                qty: Math.min(i.qty + 1, 20),
-                group_id: i.group_id ?? getCartGroupId(i.menu_item_id),
-                accompaniments: nextAccompaniments
-              };
-            })
+            items: get().items.map((i) =>
+              i.menu_item_id === item.menu_item_id
+                ? {
+                    ...i,
+                    qty: Math.min(i.qty + 1, 20),
+                    group_id: i.group_id ?? getCartGroupId(i.menu_item_id)
+                  }
+                : i
+            )
           });
           return;
         }
@@ -126,6 +118,37 @@ export const useCartStore = create<CartState>()(
         }
         set({
           items: get().items.map((i) => (i.menu_item_id === menu_item_id ? { ...i, qty: Math.min(qty, 20) } : i))
+        });
+      },
+      setGroupAddOn: (parent_menu_item_id, accompaniment, enabled) => {
+        set({
+          items: get().items.map((item) => {
+            if (item.menu_item_id !== parent_menu_item_id) {
+              return item;
+            }
+
+            if (!enabled) {
+              return {
+                ...item,
+                accompaniments: (item.accompaniments ?? []).filter((current) => current.menu_item_id !== accompaniment.menu_item_id)
+              };
+            }
+
+            const [nextAccompaniment] = sanitizeAccompaniments(parent_menu_item_id, [{ ...accompaniment, qty: 1 }]);
+            if (!nextAccompaniment) {
+              return item;
+            }
+
+            if ((item.accompaniments ?? []).some((current) => current.menu_item_id === nextAccompaniment.menu_item_id)) {
+              return item;
+            }
+
+            return {
+              ...item,
+              group_id: item.group_id ?? getCartGroupId(item.menu_item_id),
+              accompaniments: [...(item.accompaniments ?? []), nextAccompaniment]
+            };
+          })
         });
       },
       updateAccompanimentQty: (parent_menu_item_id, menu_item_id, qty) => {

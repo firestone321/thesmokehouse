@@ -25,6 +25,7 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
   const cartItems = useCartStore((s) => s.items);
   const addItem = useCartStore((s) => s.addItem);
   const updateQty = useCartStore((s) => s.updateQty);
+  const setGroupAddOn = useCartStore((s) => s.setGroupAddOn);
   const updateAccompanimentQty = useCartStore((s) => s.updateAccompanimentQty);
   const removeItem = useCartStore((s) => s.removeItem);
   const removeAccompaniment = useCartStore((s) => s.removeAccompaniment);
@@ -76,18 +77,44 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
   const filtered = useMemo(() => storefrontItems.filter((item) => item.category === active), [active, storefrontItems]);
   const displayedTotal = cartTotal;
 
-  function getPendingAddons(menuItemId: number) {
-    return (selectedAddonIdsByItem[menuItemId] ?? [])
+  function getAddonsFromIds(addonIds: number[]) {
+    return addonIds
+      .map((addonId) => addonItemsById.get(addonId))
+      .filter((addon): addon is MenuItem => addon !== undefined);
+  }
+
+  function getAvailableAddonsFromIds(addonIds: number[]) {
+    return addonIds
       .map((addonId) => addonItemsById.get(addonId))
       .filter((addon): addon is MenuItem => addon !== undefined && addon.is_available);
   }
 
-  function getPendingSubtotal(item: MenuItem) {
-    return item.price + getPendingAddons(item.id).reduce((sum, addon) => sum + addon.price, 0);
+  function getPendingAddons(menuItemId: number) {
+    return getAvailableAddonsFromIds(selectedAddonIdsByItem[menuItemId] ?? []);
+  }
+
+  function getCardSubtotal(item: MenuItem, selectedAddonIds: number[]) {
+    return item.price + getAddonsFromIds(selectedAddonIds).reduce((sum, addon) => sum + addon.price, 0);
   }
 
   function toggleAddon(menuItemId: number, addon: MenuItem) {
     if (!addon.is_available) {
+      return;
+    }
+
+    const cartItem = safeCartItems.find((item) => item.menu_item_id === menuItemId);
+    if (cartItem) {
+      const enabled = !(cartItem.accompaniments ?? []).some((accompaniment) => accompaniment.menu_item_id === addon.id);
+      setGroupAddOn(
+        menuItemId,
+        {
+          menu_item_id: addon.id,
+          name: addon.name,
+          price: addon.price,
+          image_url: addon.image_url
+        },
+        enabled
+      );
       return;
     }
 
@@ -105,6 +132,13 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
   }
 
   function addMenuItem(item: MenuItem) {
+    const cartItem = safeCartItems.find((cartLine) => cartLine.menu_item_id === item.id);
+    if (cartItem) {
+      addItem({ menu_item_id: item.id, name: item.name, price: item.price, image_url: item.image_url });
+      setSelectedAddonIdsByItem((current) => ({ ...current, [item.id]: [] }));
+      return;
+    }
+
     const selectedAddons = getPendingAddons(item.id);
 
     addItem(
@@ -142,8 +176,11 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {filtered.map((item) => {
               const isOutOfStock = !item.is_available;
-              const selectedAddonIds = selectedAddonIdsByItem[item.id] ?? [];
-              const pendingSubtotal = getPendingSubtotal(item);
+              const cartItem = safeCartItems.find((cartLine) => cartLine.menu_item_id === item.id);
+              const selectedAddonIds = cartItem
+                ? (cartItem.accompaniments ?? []).map((accompaniment) => accompaniment.menu_item_id)
+                : (selectedAddonIdsByItem[item.id] ?? []);
+              const pendingSubtotal = getCardSubtotal(item, selectedAddonIds);
               const stockMessage = isOutOfStock
                 ? "Out of stock"
                 : item.available_quantity <= STOREFRONT_LOW_STOCK_COUNT_THRESHOLD
