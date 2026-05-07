@@ -26,15 +26,16 @@ function sanitizeQuantity(value: unknown) {
   return Number.isFinite(parsed) ? Math.min(Math.max(Math.trunc(parsed), 1), 20) : 1;
 }
 
-function sanitizeAccompaniments(parentMenuItemId: number, items: CartAccompaniment[] | undefined): CartAccompaniment[] {
+function sanitizeAccompaniments(parentMenuItemId: number, parentQty: number, items: CartAccompaniment[] | undefined): CartAccompaniment[] {
   const seen = new Set<number>();
+  const maxQty = sanitizeQuantity(parentQty);
 
   return (items ?? [])
     .map((item) => ({
       ...item,
       menu_item_id: Number(item.menu_item_id),
       price: Number(item.price),
-      qty: sanitizeQuantity(item.qty)
+      qty: Math.min(sanitizeQuantity(item.qty), maxQty)
     }))
     .filter((item) => {
       if (
@@ -55,14 +56,19 @@ function sanitizeAccompaniments(parentMenuItemId: number, items: CartAccompanime
 
 function sanitizeCartItems(items: CartItem[]): CartItem[] {
   return items
-    .map((item) => ({
-      ...item,
-      menu_item_id: Number(item.menu_item_id),
-      price: Number(item.price),
-      qty: sanitizeQuantity(item.qty),
-      group_id: typeof item.group_id === "string" && item.group_id.length > 0 ? item.group_id : getCartGroupId(Number(item.menu_item_id)),
-      accompaniments: sanitizeAccompaniments(Number(item.menu_item_id), item.accompaniments)
-    }))
+    .map((item) => {
+      const menuItemId = Number(item.menu_item_id);
+      const qty = sanitizeQuantity(item.qty);
+
+      return {
+        ...item,
+        menu_item_id: menuItemId,
+        price: Number(item.price),
+        qty,
+        group_id: typeof item.group_id === "string" && item.group_id.length > 0 ? item.group_id : getCartGroupId(menuItemId),
+        accompaniments: sanitizeAccompaniments(menuItemId, qty, item.accompaniments)
+      };
+    })
     .filter(
       (item) =>
         Number.isInteger(item.menu_item_id) &&
@@ -82,6 +88,7 @@ export const useCartStore = create<CartState>()(
         const existing = get().items.find((i) => i.menu_item_id === item.menu_item_id);
         const selectedAccompaniments = sanitizeAccompaniments(
           item.menu_item_id,
+          1,
           accompaniments.map((accompaniment) => ({ ...accompaniment, qty: 1 }))
         );
 
@@ -117,7 +124,21 @@ export const useCartStore = create<CartState>()(
           return;
         }
         set({
-          items: get().items.map((i) => (i.menu_item_id === menu_item_id ? { ...i, qty: Math.min(qty, 20) } : i))
+          items: get().items.map((i) => {
+            if (i.menu_item_id !== menu_item_id) {
+              return i;
+            }
+
+            const nextQty = Math.min(sanitizeQuantity(qty), 20);
+            return {
+              ...i,
+              qty: nextQty,
+              accompaniments: (i.accompaniments ?? []).map((accompaniment) => ({
+                ...accompaniment,
+                qty: Math.min(accompaniment.qty, nextQty)
+              }))
+            };
+          })
         });
       },
       setGroupAddOn: (parent_menu_item_id, accompaniment, enabled) => {
@@ -134,7 +155,7 @@ export const useCartStore = create<CartState>()(
               };
             }
 
-            const [nextAccompaniment] = sanitizeAccompaniments(parent_menu_item_id, [{ ...accompaniment, qty: 1 }]);
+            const [nextAccompaniment] = sanitizeAccompaniments(parent_menu_item_id, item.qty, [{ ...accompaniment, qty: 1 }]);
             if (!nextAccompaniment) {
               return item;
             }
@@ -168,7 +189,7 @@ export const useCartStore = create<CartState>()(
             return {
               ...item,
               accompaniments: (item.accompaniments ?? []).map((accompaniment) =>
-                accompaniment.menu_item_id === menu_item_id ? { ...accompaniment, qty: Math.min(qty, 20) } : accompaniment
+                accompaniment.menu_item_id === menu_item_id ? { ...accompaniment, qty: Math.min(sanitizeQuantity(qty), item.qty, 20) } : accompaniment
               )
             };
           })

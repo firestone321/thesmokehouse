@@ -100,6 +100,42 @@ function buildCheckoutRequestHash(input: {
     .digest("hex");
 }
 
+function validateGroupedCartQuantities(items: ParsedOrderItem[]) {
+  const groupMainQty = new Map<string, number>();
+  const groupedAddons: ParsedOrderItem[] = [];
+
+  for (const item of items) {
+    if (item.client_item_role && !item.client_group_id) {
+      return "Cart item grouping is incomplete. Please reload checkout and try again.";
+    }
+
+    if (item.client_item_role === "main" && item.client_group_id) {
+      groupMainQty.set(item.client_group_id, (groupMainQty.get(item.client_group_id) ?? 0) + item.qty);
+    }
+
+    if (item.client_item_role === "addon") {
+      groupedAddons.push(item);
+    }
+  }
+
+  for (const addon of groupedAddons) {
+    if (!addon.client_group_id) {
+      return "Cart accompaniment is missing its main item. Please reload checkout and try again.";
+    }
+
+    const parentQty = groupMainQty.get(addon.client_group_id);
+    if (!parentQty) {
+      return "Cart accompaniment is missing its main item. Please reload checkout and try again.";
+    }
+
+    if (addon.qty > parentQty) {
+      return "Accompaniment quantity cannot exceed the matching main item quantity.";
+    }
+  }
+
+  return null;
+}
+
 export async function POST(req: NextRequest) {
   const body = await readJsonWithLimit(req, 32 * 1024).catch((error) => {
     if (error instanceof RequestBodyTooLargeError) {
@@ -119,6 +155,12 @@ export async function POST(req: NextRequest) {
   }
 
   const input = parsed.data;
+  const groupedCartError = validateGroupedCartQuantities(input.items);
+
+  if (groupedCartError) {
+    return NextResponse.json({ error: groupedCartError }, { status: 400 });
+  }
+
   const aggregatedItems = Array.from(
     input.items
       .reduce((itemMap, item) => {

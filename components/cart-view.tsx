@@ -133,7 +133,8 @@ export function CartView({ showCheckout = true }: { showCheckout?: boolean }) {
                             <button
                               type="button"
                               onClick={() => updateAccompanimentQty(item.menu_item_id, accompaniment.menu_item_id, accompaniment.qty + 1)}
-                              className="h-8 w-8 text-lg font-black text-[#30241F] transition hover:bg-[#DADBD7]"
+                              disabled={accompaniment.qty >= item.qty}
+                              className="h-8 w-8 text-lg font-black text-[#30241F] transition hover:bg-[#DADBD7] disabled:cursor-not-allowed disabled:opacity-40"
                               aria-label={`Increase ${accompaniment.name}`}
                             >
                               +

@@ -421,7 +421,8 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
                                     <button
                                       type="button"
                                       onClick={() => updateAccompanimentQty(item.menu_item_id, accompaniment.menu_item_id, accompaniment.qty + 1)}
-                                      className="h-7 w-7 text-base font-black text-[#5b3826] transition hover:bg-[#f4e9d9]"
+                                      disabled={accompaniment.qty >= item.qty}
+                                      className="h-7 w-7 text-base font-black text-[#5b3826] transition hover:bg-[#f4e9d9] disabled:cursor-not-allowed disabled:opacity-40"
                                       aria-label={`Increase ${accompaniment.name}`}
                                     >
                                       +
