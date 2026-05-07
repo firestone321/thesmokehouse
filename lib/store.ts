@@ -79,11 +79,31 @@ export const useCartStore = create<CartState>()(
       setHasHydrated: (value) => set({ hasHydrated: value }),
       addItem: (item, accompaniments = []) => {
         const existing = get().items.find((i) => i.menu_item_id === item.menu_item_id);
+        const selectedAccompaniments = sanitizeAccompaniments(
+          item.menu_item_id,
+          accompaniments.map((accompaniment) => ({ ...accompaniment, qty: 1 }))
+        );
+
         if (existing) {
           set({
-            items: get().items.map((i) =>
-              i.menu_item_id === item.menu_item_id ? { ...i, qty: Math.min(i.qty + 1, 20) } : i
-            )
+            items: get().items.map((i) => {
+              if (i.menu_item_id !== item.menu_item_id) {
+                return i;
+              }
+
+              const existingAddonIds = new Set((i.accompaniments ?? []).map((accompaniment) => accompaniment.menu_item_id));
+              const nextAccompaniments = [
+                ...(i.accompaniments ?? []),
+                ...selectedAccompaniments.filter((accompaniment) => !existingAddonIds.has(accompaniment.menu_item_id))
+              ];
+
+              return {
+                ...i,
+                qty: Math.min(i.qty + 1, 20),
+                group_id: i.group_id ?? getCartGroupId(i.menu_item_id),
+                accompaniments: nextAccompaniments
+              };
+            })
           });
           return;
         }
@@ -94,10 +114,7 @@ export const useCartStore = create<CartState>()(
               ...item,
               qty: 1,
               group_id: getCartGroupId(item.menu_item_id),
-              accompaniments: sanitizeAccompaniments(
-                item.menu_item_id,
-                accompaniments.map((accompaniment) => ({ ...accompaniment, qty: 1 }))
-              )
+              accompaniments: selectedAccompaniments
             }
           ]
         });
