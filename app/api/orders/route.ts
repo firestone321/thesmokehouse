@@ -451,7 +451,7 @@ export async function POST(req: NextRequest) {
             p_service_date: serviceDate,
             p_promised_at: promisedAt,
             p_total_amount: total,
-            p_items: JSON.stringify(orderItemsToInsert)
+            p_items: orderItemsToInsert
           }
         : {
             p_public_token: publicToken,
@@ -463,7 +463,7 @@ export async function POST(req: NextRequest) {
             p_service_date: serviceDate,
             p_promised_at: promisedAt,
             p_total_amount: total,
-            p_items: JSON.stringify(orderItemsToInsert)
+            p_items: orderItemsToInsert
           };
     const { data: rpcData, error: rpcError } = await supabase.rpc(rpcName, rpcInput);
 
