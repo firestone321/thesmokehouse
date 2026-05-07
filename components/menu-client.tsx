@@ -13,6 +13,7 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
   const [active, setActive] = useState<string>("");
   const [pickupTime, setPickupTime] = useState("15");
   const [items, setItems] = useState<MenuItem[]>(initialItems);
+  const [selectedAddonIdsByItem, setSelectedAddonIdsByItem] = useState<Record<number, number[]>>({});
 
   useEffect(() => {
     fetch("/api/menu")
@@ -24,7 +25,9 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
   const cartItems = useCartStore((s) => s.items);
   const addItem = useCartStore((s) => s.addItem);
   const updateQty = useCartStore((s) => s.updateQty);
+  const updateAccompanimentQty = useCartStore((s) => s.updateAccompanimentQty);
   const removeItem = useCartStore((s) => s.removeItem);
+  const removeAccompaniment = useCartStore((s) => s.removeAccompaniment);
   const count = useCartStore((s) => s.count);
   const total = useCartStore((s) => s.total);
   const hydrated = useCartHydration();
@@ -34,6 +37,10 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
   const storefrontItems = useMemo(() => items.filter((item) => item.category !== "drinks" && item.category !== "accompaniments"), [items]);
   // show accompaniments in-card even when out of stock; UI will mark them "Sold out" and disable selection
   const accompanimentList = useMemo(() => accompanimentItems, [accompanimentItems]);
+  const addonItemsById = useMemo(
+    () => new Map([...accompanimentList, ...drinkItems].map((addon) => [addon.id, addon])),
+    [accompanimentList, drinkItems]
+  );
 
   const availableCategories = useMemo(
     () =>
@@ -65,37 +72,51 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
   const safeCartItems = hydrated ? cartItems : [];
   const safeCount = hydrated ? count() : 0;
   const cartTotal = hydrated ? total() : 0;
-  const addonIdsInCart = useMemo(
-    () =>
-      new Set(
-        safeCartItems
-          .filter((item) =>
-            drinkItems.some((drink) => drink.id === item.menu_item_id) ||
-            accompanimentList.some((accompaniment) => accompaniment.id === item.menu_item_id)
-          )
-          .map((item) => item.menu_item_id)
-      ),
-    [accompanimentList, drinkItems, safeCartItems]
-  );
 
   const filtered = useMemo(() => storefrontItems.filter((item) => item.category === active), [active, storefrontItems]);
   const displayedTotal = cartTotal;
 
-  function toggleAddon(addon: MenuItem) {
+  function getPendingAddons(menuItemId: number) {
+    return (selectedAddonIdsByItem[menuItemId] ?? [])
+      .map((addonId) => addonItemsById.get(addonId))
+      .filter((addon): addon is MenuItem => addon !== undefined && addon.is_available);
+  }
+
+  function getPendingSubtotal(item: MenuItem) {
+    return item.price + getPendingAddons(item.id).reduce((sum, addon) => sum + addon.price, 0);
+  }
+
+  function toggleAddon(menuItemId: number, addon: MenuItem) {
     if (!addon.is_available) {
       return;
     }
 
-    if (addonIdsInCart.has(addon.id)) {
-      removeItem(addon.id);
-      return;
-    }
+    setSelectedAddonIdsByItem((current) => {
+      const selectedIds = current[menuItemId] ?? [];
+      const nextIds = selectedIds.includes(addon.id)
+        ? selectedIds.filter((selectedId) => selectedId !== addon.id)
+        : [...selectedIds, addon.id];
 
-    addItem({ menu_item_id: addon.id, name: addon.name, price: addon.price, image_url: addon.image_url });
+      return {
+        ...current,
+        [menuItemId]: nextIds
+      };
+    });
   }
 
   function addMenuItem(item: MenuItem) {
-    addItem({ menu_item_id: item.id, name: item.name, price: item.price, image_url: item.image_url });
+    const selectedAddons = getPendingAddons(item.id);
+
+    addItem(
+      { menu_item_id: item.id, name: item.name, price: item.price, image_url: item.image_url },
+      selectedAddons.map((addon) => ({
+        menu_item_id: addon.id,
+        name: addon.name,
+        price: addon.price,
+        image_url: addon.image_url
+      }))
+    );
+    setSelectedAddonIdsByItem((current) => ({ ...current, [item.id]: [] }));
   }
 
   return (
@@ -121,6 +142,8 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {filtered.map((item) => {
               const isOutOfStock = !item.is_available;
+              const selectedAddonIds = selectedAddonIdsByItem[item.id] ?? [];
+              const pendingSubtotal = getPendingSubtotal(item);
               const stockMessage = isOutOfStock
                 ? "Out of stock"
                 : item.available_quantity <= STOREFRONT_LOW_STOCK_COUNT_THRESHOLD
@@ -163,9 +186,9 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
                         <p className="text-xs font-black uppercase tracking-wide text-[#6a4d38]">Add Accompaniments</p>
                         <div className="mt-2 space-y-2">
                           {accompanimentList.map((accompaniment) => {
-                            const checked = addonIdsInCart.has(accompaniment.id);
+                            const checked = selectedAddonIds.includes(accompaniment.id);
                             const isUnavailable = !accompaniment.is_available;
-                            const addonStatus = checked ? "In cart" : isUnavailable ? "Sold out" : `+ ${formatCurrency(accompaniment.price)}`;
+                            const addonStatus = checked ? "Selected" : isUnavailable ? "Sold out" : `+ ${formatCurrency(accompaniment.price)}`;
 
                             return (
                               <label
@@ -183,7 +206,7 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
                                     type="checkbox"
                                     checked={checked}
                                     disabled={isUnavailable}
-                                    onChange={() => toggleAddon(accompaniment)}
+                                    onChange={() => toggleAddon(item.id, accompaniment)}
                                     className="h-4 w-4 accent-[#a23b22]"
                                   />
                                   <span className="truncate">{accompaniment.name}</span>
@@ -201,10 +224,10 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
                         <p className="text-xs font-black uppercase tracking-wide text-[#6a4d38]">Add drinks</p>
                         <div className="mt-2 space-y-2">
                           {drinkItems.map((addon) => {
-                            const checked = addonIdsInCart.has(addon.id);
+                            const checked = selectedAddonIds.includes(addon.id);
                             const isUnavailable = !addon.is_available;
                             const addonStatus = checked
-                              ? "In cart"
+                              ? "Selected"
                               : addon.is_available
                                 ? `+ ${formatCurrency(addon.price)}`
                                 : "Sold out";
@@ -223,7 +246,7 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
                                     type="checkbox"
                                     checked={checked}
                                     disabled={isUnavailable}
-                                    onChange={() => toggleAddon(addon)}
+                                    onChange={() => toggleAddon(item.id, addon)}
                                     className="h-4 w-4 accent-[#a23b22]"
                                   />
                                   <span className="truncate">{addon.name}</span>
@@ -239,7 +262,10 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
 
                   <div className="flex items-center justify-between border-t border-[#dfcbb5] bg-[#f4e9d9] px-3 py-2">
                     <div>
-                      <span className="text-base font-black text-[#2b211b]">{formatCurrency(item.price)}</span>
+                      <span className="text-base font-black text-[#2b211b]">{formatCurrency(pendingSubtotal)}</span>
+                      {pendingSubtotal !== item.price ? (
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-[#6a5647]">Card subtotal</p>
+                      ) : null}
                     </div>
                     <button
                       type="button"
@@ -327,6 +353,49 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
                           </div>
                           <p className="shrink-0 text-sm font-black text-[#2b211b]">{formatCurrency(item.qty * item.price)}</p>
                         </div>
+                        {item.accompaniments?.length ? (
+                          <div className="mt-3 space-y-2 border-l-2 border-[#e4d0b9] pl-3">
+                            {item.accompaniments.map((accompaniment) => (
+                              <div key={accompaniment.menu_item_id} className="rounded-lg bg-[#fff7ec] px-2 py-2">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <p className="truncate text-xs font-extrabold text-[#3d2f25]">{accompaniment.name}</p>
+                                    <p className="mt-0.5 text-[11px] font-semibold text-[#7a5c44]">{formatCurrency(accompaniment.price)} each</p>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeAccompaniment(item.menu_item_id, accompaniment.menu_item_id)}
+                                    className="rounded px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide text-[#a23b22] transition hover:bg-[#f4e2d5]"
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                                <div className="mt-2 flex items-center justify-between gap-2">
+                                  <div className="flex items-center overflow-hidden rounded-md border border-[#d6bea4] bg-white">
+                                    <button
+                                      type="button"
+                                      onClick={() => updateAccompanimentQty(item.menu_item_id, accompaniment.menu_item_id, accompaniment.qty - 1)}
+                                      className="h-7 w-7 text-base font-black text-[#5b3826] transition hover:bg-[#f4e9d9]"
+                                      aria-label={`Decrease ${accompaniment.name}`}
+                                    >
+                                      -
+                                    </button>
+                                    <span className="w-7 text-center text-xs font-extrabold text-[#2b211b]">{accompaniment.qty}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => updateAccompanimentQty(item.menu_item_id, accompaniment.menu_item_id, accompaniment.qty + 1)}
+                                      className="h-7 w-7 text-base font-black text-[#5b3826] transition hover:bg-[#f4e9d9]"
+                                      aria-label={`Increase ${accompaniment.name}`}
+                                    >
+                                      +
+                                    </button>
+                                  </div>
+                                  <p className="shrink-0 text-xs font-black text-[#2b211b]">{formatCurrency(accompaniment.qty * accompaniment.price)}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   </div>

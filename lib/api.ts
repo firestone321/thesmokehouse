@@ -1,7 +1,8 @@
 import { MenuItem, Order } from "@/lib/types";
+import type { CheckoutCartLine } from "@/lib/cart";
 
 export interface CreateOrderPayload {
-  items: { menu_item_id: number; qty: number }[];
+  items: CheckoutCartLine[];
   pickup_time: string;
   name: string;
   phone: string;

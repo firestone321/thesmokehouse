@@ -56,6 +56,14 @@ interface ReservationRow {
   pickup_code: string | null;
 }
 
+type ParsedOrderItem = {
+  menu_item_id: number;
+  qty: number;
+  client_group_id?: string;
+  client_item_role?: "main" | "addon";
+  client_sort_order?: number;
+};
+
 type OrderResult = {
   public_token: string;
   order_number: string;
@@ -72,7 +80,7 @@ function tooManyRequests(retryAfterSeconds: number) {
 }
 
 function buildCheckoutRequestHash(input: {
-  items: { menu_item_id: number; qty: number }[];
+  items: ParsedOrderItem[];
   pickup_time: string;
   name: string;
   phone: string;
@@ -110,19 +118,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid order payload" }, { status: 400 });
   }
 
-  const input = {
-    ...parsed.data,
-    items: Array.from(
-      parsed.data.items
-        .reduce((itemMap, item) => {
-          itemMap.set(item.menu_item_id, (itemMap.get(item.menu_item_id) ?? 0) + item.qty);
-          return itemMap;
-        }, new Map<number, number>())
-        .entries()
-    ).map(([menu_item_id, qty]) => ({ menu_item_id, qty }))
-  };
+  const input = parsed.data;
+  const aggregatedItems = Array.from(
+    input.items
+      .reduce((itemMap, item) => {
+        itemMap.set(item.menu_item_id, (itemMap.get(item.menu_item_id) ?? 0) + item.qty);
+        return itemMap;
+      }, new Map<number, number>())
+      .entries()
+  ).map(([menu_item_id, qty]) => ({ menu_item_id, qty }));
 
-  if (input.items.some((item) => item.qty > 20)) {
+  if (aggregatedItems.some((item) => item.qty > 20)) {
     return NextResponse.json({ error: "Item quantity is too large" }, { status: 400 });
   }
 
@@ -272,7 +278,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const ids = Array.from(new Set(input.items.map((i) => i.menu_item_id)));
+  const ids = Array.from(new Set(aggregatedItems.map((i) => i.menu_item_id)));
 
   const { data: menuItems, error: menuError } = await supabase
     .from("menu_items")
@@ -315,9 +321,17 @@ export async function POST(req: NextRequest) {
   const menuMap = new Map(safeMenuItems.map((item) => [item.id, item]));
 
   let total = 0;
-  const orderItemsToInsert: { menu_item_id: number; menu_item_name: string; quantity: number; unit_price: number }[] = [];
+  const orderItemsToInsert: {
+    menu_item_id: number;
+    menu_item_name: string;
+    quantity: number;
+    unit_price: number;
+    cart_group_id?: string;
+    cart_item_role?: "main" | "addon";
+    cart_sort_order?: number;
+  }[] = [];
 
-  for (const item of input.items) {
+  for (const item of aggregatedItems) {
     const dbItem = menuMap.get(item.menu_item_id);
     if (!dbItem || !dbItem.is_active || !dbItem.is_available_today) {
       return NextResponse.json({ error: "One or more menu items are unavailable" }, { status: 400 });
@@ -342,12 +356,21 @@ export async function POST(req: NextRequest) {
     }
 
     total += dbItem.base_price * item.qty;
+  }
 
+  for (const item of input.items) {
+    const dbItem = menuMap.get(item.menu_item_id);
+    if (!dbItem) {
+      return NextResponse.json({ error: "One or more menu items are unavailable" }, { status: 400 });
+    }
     orderItemsToInsert.push({
       menu_item_id: item.menu_item_id,
       menu_item_name: dbItem.name,
       quantity: item.qty,
-      unit_price: dbItem.base_price
+      unit_price: dbItem.base_price,
+      cart_group_id: item.client_group_id,
+      cart_item_role: item.client_item_role,
+      cart_sort_order: item.client_sort_order
     });
   }
 

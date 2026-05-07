@@ -3,6 +3,7 @@
 import { FormEvent, useMemo, useRef, useState } from "react";
 import { useCartStore } from "@/lib/store";
 import { createOrder } from "@/lib/api";
+import { flattenCartForCheckout } from "@/lib/cart";
 import { formatCurrency } from "@/lib/format";
 import { rememberGuestOrder } from "@/lib/guest-order";
 import { useCartHydration } from "@/lib/use-cart-hydration";
@@ -37,7 +38,7 @@ export function CheckoutForm() {
 
     try {
       const result = await createOrder({
-        items: safeItems.map((item) => ({ menu_item_id: item.menu_item_id, qty: item.qty })),
+        items: flattenCartForCheckout(safeItems),
         pickup_time: pickupTime,
         name: name.trim(),
         phone: phone.trim(),
@@ -101,14 +102,28 @@ export function CheckoutForm() {
 
       <aside className="h-fit min-w-0 rounded-2xl border border-[#C3C5C1] bg-[#F7F7F4] p-5 shadow-card lg:sticky lg:top-6">
         <h3 className="text-lg font-bold text-[#30241F]">Order Summary</h3>
-        <p className="mt-1 text-sm text-[#666A67]">{safeItems.length} line items</p>
+        <p className="mt-1 text-sm text-[#666A67]">{safeItems.length} meal groups</p>
         <ul className="mt-3 space-y-2 text-sm text-[#424440]">
           {safeItems.map((item) => (
-            <li key={item.menu_item_id} className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-              <span className="min-w-0 break-words">
-                {item.qty}x {item.name}
-              </span>
-              <span className="shrink-0">{formatCurrency(item.qty * item.price)}</span>
+            <li key={item.menu_item_id} className="space-y-1">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                <span className="min-w-0 break-words">
+                  {item.qty}x {item.name}
+                </span>
+                <span className="shrink-0">{formatCurrency(item.qty * item.price)}</span>
+              </div>
+              {item.accompaniments?.length ? (
+                <ul className="space-y-1 border-l border-[#C9CAC7] pl-3 text-[#555854]">
+                  {item.accompaniments.map((accompaniment) => (
+                    <li key={accompaniment.menu_item_id} className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                      <span className="min-w-0 break-words">
+                        {accompaniment.qty}x {accompaniment.name}
+                      </span>
+                      <span className="shrink-0">{formatCurrency(accompaniment.qty * accompaniment.price)}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </li>
           ))}
         </ul>

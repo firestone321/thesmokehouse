@@ -22,6 +22,16 @@ export interface CartItem {
   price: number;
   qty: number;
   image_url?: string | null;
+  group_id?: string;
+  accompaniments?: CartAccompaniment[];
+}
+
+export interface CartAccompaniment {
+  menu_item_id: number;
+  name: string;
+  price: number;
+  qty: number;
+  image_url?: string | null;
 }
 
 export interface OrderItem {

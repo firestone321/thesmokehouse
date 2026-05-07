@@ -9,7 +9,9 @@ import { useCartHydration } from "@/lib/use-cart-hydration";
 export function CartView({ showCheckout = true }: { showCheckout?: boolean }) {
   const items = useCartStore((s) => s.items);
   const updateQty = useCartStore((s) => s.updateQty);
+  const updateAccompanimentQty = useCartStore((s) => s.updateAccompanimentQty);
   const removeItem = useCartStore((s) => s.removeItem);
+  const removeAccompaniment = useCartStore((s) => s.removeAccompaniment);
   const total = useCartStore((s) => s.total);
   const hydrated = useCartHydration();
 
@@ -49,7 +51,7 @@ export function CartView({ showCheckout = true }: { showCheckout?: boolean }) {
             <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#666A67]">Current ticket</p>
             <h2 className="mt-1 text-2xl font-black uppercase tracking-wide text-[#242321]">Items on the fireline</h2>
           </div>
-          <p className="rounded bg-[#E1E2DE] px-3 py-1 text-sm font-extrabold text-[#30241F]">{safeItems.length} line items</p>
+          <p className="rounded bg-[#E1E2DE] px-3 py-1 text-sm font-extrabold text-[#30241F]">{safeItems.length} meal groups</p>
         </div>
         <div className="mt-4 space-y-3">
         {safeItems.map((item) => (
@@ -100,6 +102,49 @@ export function CartView({ showCheckout = true }: { showCheckout?: boolean }) {
                   </div>
                   <p className="text-lg font-black text-[#242321] sm:text-right">{formatCurrency(item.qty * item.price)}</p>
                 </div>
+                {item.accompaniments?.length ? (
+                  <div className="mt-4 space-y-2 border-l-2 border-[#C9CAC7] pl-3">
+                    {item.accompaniments.map((accompaniment) => (
+                      <div key={accompaniment.menu_item_id} className="rounded-md border border-[#DADBD7] bg-[#F2F2EF] px-3 py-3">
+                        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0">
+                            <h4 className="break-words text-sm font-black leading-tight text-[#30241F]">{accompaniment.name}</h4>
+                            <p className="mt-1 text-xs font-semibold text-[#555854]">{formatCurrency(accompaniment.price)} each</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeAccompaniment(item.menu_item_id, accompaniment.menu_item_id)}
+                            className="self-start rounded-md border border-transparent px-2 py-1 text-[11px] font-extrabold uppercase tracking-wide text-[#743626] transition hover:border-[#C9CAC7] hover:bg-[#ECECEA]"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex w-fit items-center overflow-hidden rounded-md border border-[#B8BAB6] bg-[#FCFCFA]">
+                            <button
+                              type="button"
+                              onClick={() => updateAccompanimentQty(item.menu_item_id, accompaniment.menu_item_id, accompaniment.qty - 1)}
+                              className="h-8 w-8 text-lg font-black text-[#30241F] transition hover:bg-[#DADBD7]"
+                              aria-label={`Decrease ${accompaniment.name}`}
+                            >
+                              -
+                            </button>
+                            <span className="w-8 text-center text-sm font-extrabold text-[#242321]">{accompaniment.qty}</span>
+                            <button
+                              type="button"
+                              onClick={() => updateAccompanimentQty(item.menu_item_id, accompaniment.menu_item_id, accompaniment.qty + 1)}
+                              className="h-8 w-8 text-lg font-black text-[#30241F] transition hover:bg-[#DADBD7]"
+                              aria-label={`Increase ${accompaniment.name}`}
+                            >
+                              +
+                            </button>
+                          </div>
+                          <p className="text-sm font-black text-[#242321] sm:text-right">{formatCurrency(accompaniment.qty * accompaniment.price)}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             </div>
           </article>

@@ -7,7 +7,16 @@ export const createOrderSchema = z.object({
     .array(
       z.object({
         menu_item_id: z.coerce.number().int().positive(),
-        qty: z.number().int().min(1).max(20)
+        qty: z.number().int().min(1).max(20),
+        client_group_id: z
+          .string()
+          .trim()
+          .min(1)
+          .max(80)
+          .regex(/^[A-Za-z0-9_-]+$/)
+          .optional(),
+        client_item_role: z.enum(["main", "addon"]).optional(),
+        client_sort_order: z.number().int().min(0).max(100).optional()
       })
     )
     .min(1)
