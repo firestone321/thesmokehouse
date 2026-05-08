@@ -136,6 +136,23 @@ function validateGroupedCartQuantities(items: ParsedOrderItem[]) {
   return null;
 }
 
+function flattenLegacyCartItems(items: ParsedOrderItem[]): ParsedOrderItem[] {
+  const flattened = new Map<number, ParsedOrderItem>();
+
+  for (const item of items) {
+    if (flattened.has(item.menu_item_id)) {
+      continue;
+    }
+
+    flattened.set(item.menu_item_id, {
+      ...item,
+      qty: 1
+    });
+  }
+
+  return Array.from(flattened.values());
+}
+
 export async function POST(req: NextRequest) {
   const body = await readJsonWithLimit(req, 32 * 1024).catch((error) => {
     if (error instanceof RequestBodyTooLargeError) {
@@ -155,14 +172,16 @@ export async function POST(req: NextRequest) {
   }
 
   const input = parsed.data;
-  const groupedCartError = validateGroupedCartQuantities(input.items);
+  const hasGroupedCartMetadata = input.items.some((item) => item.client_group_id || item.client_item_role);
+  const normalizedItems = hasGroupedCartMetadata ? input.items : flattenLegacyCartItems(input.items);
+  const groupedCartError = hasGroupedCartMetadata ? validateGroupedCartQuantities(normalizedItems) : null;
 
   if (groupedCartError) {
     return NextResponse.json({ error: groupedCartError }, { status: 400 });
   }
 
   const aggregatedItems = Array.from(
-    input.items
+    normalizedItems
       .reduce((itemMap, item) => {
         itemMap.set(item.menu_item_id, (itemMap.get(item.menu_item_id) ?? 0) + item.qty);
         return itemMap;
@@ -176,7 +195,10 @@ export async function POST(req: NextRequest) {
 
   const supabase = getSupabaseAdmin();
   const idempotencyKey = input.idempotency_key ?? null;
-  const requestHash = buildCheckoutRequestHash(input);
+  const requestHash = buildCheckoutRequestHash({
+    ...input,
+    items: normalizedItems
+  });
 
   async function markReservation(status: "complete" | "failed", result?: OrderResult, lastError?: string) {
     if (!idempotencyKey) return;
@@ -400,7 +422,7 @@ export async function POST(req: NextRequest) {
     total += dbItem.base_price * item.qty;
   }
 
-  for (const item of input.items) {
+  for (const item of normalizedItems) {
     const dbItem = menuMap.get(item.menu_item_id);
     if (!dbItem) {
       return NextResponse.json({ error: "One or more menu items are unavailable" }, { status: 400 });
