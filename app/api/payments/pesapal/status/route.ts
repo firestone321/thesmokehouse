@@ -61,7 +61,9 @@ export async function GET(request: Request) {
     completed_at: string | null;
     cancelled_at: string | null;
   };
-  const access = await resolveOrderReadAccess(accessOrder);
+  const access = await resolveOrderReadAccess(accessOrder, {
+    allowPublicTokenBootstrap: true
+  });
 
   if (!access.allowed) {
     if (access.clearOrderAccessCookie) {
@@ -81,7 +83,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ message: access.message }, { status: access.status });
   }
 
-  await syncOrderAccessCookie(accessOrder);
+  await syncOrderAccessCookie(accessOrder, {
+    allowPublicTokenBootstrap: true
+  });
 
   try {
     const order = await getOrderPaymentSnapshot(token, {

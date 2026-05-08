@@ -94,7 +94,9 @@ export async function GET(req: Request, { params }: Params) {
     completed_at: string | null;
     cancelled_at: string | null;
   };
-  const access = await resolveOrderReadAccess(accessOrder);
+  const access = await resolveOrderReadAccess(accessOrder, {
+    allowPublicTokenBootstrap: true
+  });
 
   if (!access.allowed) {
     if (access.clearOrderAccessCookie) {
@@ -106,7 +108,9 @@ export async function GET(req: Request, { params }: Params) {
     return NextResponse.json({ error: access.message }, { status: access.status });
   }
 
-  await syncOrderAccessCookie(accessOrder);
+  await syncOrderAccessCookie(accessOrder, {
+    allowPublicTokenBootstrap: true
+  });
 
   const { data, error } = await getSupabaseAdmin()
     .from("orders")

@@ -7,6 +7,7 @@ import { getGuestDeviceSession } from "@/lib/guest-device";
 const ORDER_ACCESS_COOKIE_NAME = "smokehouse_order_session";
 const ORDER_ACCESS_MAX_AGE_SECONDS = 24 * 60 * 60;
 const RECEIPT_REOPEN_WINDOW_MS = 24 * 60 * 60 * 1000;
+const CANCELLATION_REOPEN_WINDOW_MS = 10 * 60 * 1000;
 
 type OrderSessionPayload = {
   orderId: number;
@@ -170,6 +171,10 @@ type OrderReadAccessDecision =
       clearOrderAccessCookie: boolean;
     };
 
+type OrderReadAccessOptions = {
+  allowPublicTokenBootstrap?: boolean;
+};
+
 function isWithinReceiptWindow(completedAt: string | null | undefined) {
   if (!completedAt) {
     return false;
@@ -181,6 +186,26 @@ function isWithinReceiptWindow(completedAt: string | null | undefined) {
   }
 
   return Date.now() - completedAtMs <= RECEIPT_REOPEN_WINDOW_MS;
+}
+
+function isWithinCancellationWindow(cancelledAt: string | null | undefined) {
+  if (!cancelledAt) {
+    return false;
+  }
+
+  const cancelledAtMs = Date.parse(cancelledAt);
+  if (!Number.isFinite(cancelledAtMs)) {
+    return false;
+  }
+
+  return Date.now() - cancelledAtMs <= CANCELLATION_REOPEN_WINDOW_MS;
+}
+
+function isCancelledOrFailed(input: OrderReadAccessTarget) {
+  const normalizedStatus = input.status.trim().toLowerCase();
+  const normalizedPaymentStatus = input.payment_status?.trim().toLowerCase() ?? "";
+
+  return normalizedStatus === "cancelled" || normalizedPaymentStatus === "cancelled" || normalizedPaymentStatus === "failed";
 }
 
 function denied(
@@ -196,10 +221,44 @@ function denied(
   };
 }
 
-export async function resolveOrderReadAccess(input: OrderReadAccessTarget): Promise<OrderReadAccessDecision> {
+export async function resolveOrderReadAccess(
+  input: OrderReadAccessTarget,
+  options: OrderReadAccessOptions = {}
+): Promise<OrderReadAccessDecision> {
   const payload = await getOrderAccessSession();
   if (!payload) {
-    return denied(401, "Your secure order session is missing. Reopen this order from the same device that placed it.");
+    if (!options.allowPublicTokenBootstrap) {
+      return denied(401, "Your secure order session is missing. Reopen this order from the same device that placed it.");
+    }
+
+    const normalizedStatus = input.status.trim().toLowerCase();
+
+    if (!input.public_token) {
+      return denied(401, "Your secure order session is missing. Reopen this order from the same device that placed it.");
+    }
+
+    if (normalizedStatus === "completed" && !isWithinReceiptWindow(input.completed_at)) {
+      return denied(403, "This receipt window has expired.", true);
+    }
+
+    if (isCancelledOrFailed(input) && !isWithinCancellationWindow(input.cancelled_at)) {
+      return denied(403, "This cancelled order is no longer available. Start a new order when you are ready.", true);
+    }
+
+    const guestDevice = await getGuestDeviceSession();
+    if (!guestDevice?.deviceId) {
+      return denied(409, "Your device session is missing. Reopen this order from the original device.", false);
+    }
+
+    if (!input.device_id) {
+      return denied(409, "This is an older order session and needs to be reopened from the original device.", false);
+    }
+
+    if (guestDevice.deviceId !== input.device_id) {
+      return denied(409, "This order belongs to another device.", false);
+    }
+
+    return { allowed: true };
   }
 
   if (payload.orderId !== input.id || (input.public_token && payload.publicToken !== input.public_token)) {
@@ -207,14 +266,13 @@ export async function resolveOrderReadAccess(input: OrderReadAccessTarget): Prom
   }
 
   const normalizedStatus = input.status.trim().toLowerCase();
-  const normalizedPaymentStatus = input.payment_status?.trim().toLowerCase() ?? "";
-
-  if (normalizedStatus === "cancelled" || normalizedPaymentStatus === "cancelled" || normalizedPaymentStatus === "failed") {
-    return denied(403, "This order can no longer be reopened.", true);
-  }
 
   if (normalizedStatus === "completed" && !isWithinReceiptWindow(input.completed_at)) {
     return denied(403, "This receipt window has expired.", true);
+  }
+
+  if (isCancelledOrFailed(input) && !isWithinCancellationWindow(input.cancelled_at)) {
+    return denied(403, "This cancelled order is no longer available. Start a new order when you are ready.", true);
   }
 
   const guestDevice = await getGuestDeviceSession();
@@ -256,8 +314,11 @@ function getRemainingReceiptWindowSeconds(completedAt: string | null | undefined
   return Math.max(1, Math.ceil(remainingMs / 1000));
 }
 
-export async function syncOrderAccessCookie(input: OrderReadAccessTarget) {
-  const result = await resolveOrderReadAccess(input);
+export async function syncOrderAccessCookie(
+  input: OrderReadAccessTarget,
+  options: OrderReadAccessOptions = {}
+) {
+  const result = await resolveOrderReadAccess(input, options);
   if (!result.allowed) {
     await clearOrderAccessCookie();
     return false;
@@ -280,17 +341,22 @@ export async function syncOrderAccessCookie(input: OrderReadAccessTarget) {
     return false;
   }
 
+  if (normalizedPaymentStatus === "cancelled" || normalizedPaymentStatus === "failed") {
+    await clearOrderAccessCookie();
+    return false;
+  }
+
+  if (normalizedStatus === "cancelled") {
+    await clearOrderAccessCookie();
+    return false;
+  }
+
   await setOrderAccessCookie({
     orderId: input.id,
     publicToken: input.public_token,
     deviceId: input.device_id?.trim() || undefined,
     maxAgeSeconds: maxAgeSeconds ?? ORDER_ACCESS_MAX_AGE_SECONDS
   });
-
-  if (normalizedPaymentStatus === "cancelled" || normalizedPaymentStatus === "failed") {
-    await clearOrderAccessCookie();
-    return false;
-  }
 
   return true;
 }

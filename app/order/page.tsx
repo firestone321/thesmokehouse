@@ -40,8 +40,7 @@ export default function LastGuestOrderPage() {
           const fallbackMessage = error instanceof Error ? error.message : "There is no active pickup order saved on this device.";
 
           if (rememberedToken) {
-            setState("expired");
-            setMessage(fallbackMessage);
+            router.replace(`/order/${rememberedToken}`);
             return;
           }
 
