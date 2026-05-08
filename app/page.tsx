@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { headers } from "next/headers";
+import type { Metadata } from "next";
 import { MenuClient } from "@/components/menu-client";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
@@ -10,6 +11,24 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { MenuItem } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Order Smoky BBQ and Takeaway Online",
+  description: "Browse the Firestone Country Smokehouse menu, build a pickup order, and track it on your device.",
+  alternates: {
+    canonical: "/"
+  },
+  openGraph: {
+    title: "Order Smoky BBQ and Takeaway Online",
+    description: "Browse the Firestone Country Smokehouse menu, build a pickup order, and track it on your device.",
+    url: "/"
+  },
+  twitter: {
+    card: "summary",
+    title: "Order Smoky BBQ and Takeaway Online",
+    description: "Browse the Firestone Country Smokehouse menu, build a pickup order, and track it on your device."
+  }
+};
 
 export default async function HomePage() {
   let menuItems: MenuItem[] = [];

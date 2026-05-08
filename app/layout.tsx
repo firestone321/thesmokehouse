@@ -2,16 +2,22 @@ import type { Metadata, Viewport } from "next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { AppProvider } from "@/components/providers/app-provider";
 import { PwaRegister } from "@/components/pwa-register";
+import { getSeoSiteOrigin } from "@/lib/site-url";
 import { getThemeBootstrapScript, LIGHT_THEME_COLOR } from "@/lib/theme";
 import "./globals.css";
 
+const siteOrigin = getSeoSiteOrigin();
+const siteTitle = "Firestone Country Smokehouse";
+const siteDescription = "Order smoky BBQ and country-style takeaway from Firestone Country Smokehouse.";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(siteOrigin),
   title: {
-    default: "Firestone Country Smokehouse",
-    template: "%s | Firestone Country Smokehouse"
+    default: siteTitle,
+    template: `%s | ${siteTitle}`
   },
-  description: "Premium family-friendly takeaway from Firestone Country Smokehouse",
-  applicationName: "Firestone Country Smokehouse",
+  description: siteDescription,
+  applicationName: siteTitle,
   manifest: "/manifest.webmanifest",
   icons: {
     icon: [
@@ -22,9 +28,30 @@ export const metadata: Metadata = {
     shortcut: ["/icons/logo-bigger.jpg"],
     apple: [{ url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }]
   },
+  openGraph: {
+    type: "website",
+    siteName: siteTitle,
+    title: siteTitle,
+    description: siteDescription,
+    url: "/",
+    images: [
+      {
+        url: "/icons/logo-bigger.jpg",
+        width: 1200,
+        height: 630,
+        alt: siteTitle
+      }
+    ]
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: siteTitle,
+    description: siteDescription,
+    images: ["/icons/logo-bigger.jpg"]
+  },
   appleWebApp: {
     capable: true,
-    title: "Firestone Country Smokehouse",
+    title: siteTitle,
     statusBarStyle: "default"
   },
   formatDetection: {

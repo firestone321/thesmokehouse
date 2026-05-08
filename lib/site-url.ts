@@ -44,6 +44,10 @@ function getConfiguredSiteUrl(): string | null {
   return null;
 }
 
+export function getSeoSiteOrigin(): string {
+  return getConfiguredSiteUrl() ?? "http://localhost:3000";
+}
+
 export function resolveSiteOrigin(requestUrl?: string): string {
   const configured = getConfiguredSiteUrl();
   if (configured) {
