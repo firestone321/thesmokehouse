@@ -172,7 +172,10 @@ self.addEventListener("notificationclick", (event) => {
   const notificationUrl = event.notification.data && typeof event.notification.data.url === "string"
     ? event.notification.data.url
     : "/";
-  const targetUrl = new URL(notificationUrl, self.location.origin).href;
+  const candidateUrl = new URL(notificationUrl, self.location.origin);
+  const targetUrl = candidateUrl.origin === self.location.origin
+    ? candidateUrl.href
+    : new URL("/", self.location.origin).href;
 
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (clients) => {

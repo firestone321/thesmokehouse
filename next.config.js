@@ -1,6 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   typedRoutes: true,
+  experimental: {
+    optimizePackageImports: ["@supabase/supabase-js", "@supabase/ssr"]
+  },
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "images.unsplash.com" },

@@ -7,11 +7,35 @@ import { enforceRateLimit } from "@/lib/rate-limit";
 import { readJsonWithLimit, RequestBodyTooLargeError } from "@/lib/request-limits";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
+const allowedPushHostSuffixes = [
+  "fcm.googleapis.com",
+  ".push.services.mozilla.com",
+  ".push.apple.com",
+  ".windows.com",
+  ".notify.windows.com"
+];
+
+function isAllowedPushEndpoint(value: string): boolean {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:") return false;
+    const host = url.hostname.toLowerCase();
+    return allowedPushHostSuffixes.some((suffix) =>
+      suffix.startsWith(".") ? host.endsWith(suffix) : host === suffix
+    );
+  } catch {
+    return false;
+  }
+}
+
 const pushSubscriptionSchema = z.object({
   orderId: z.coerce.number().int().positive().optional(),
   deviceId: z.string().trim().min(8).max(128).regex(/^[A-Za-z0-9_-]+$/).optional(),
   vapidPublicKey: z.string().trim().min(1).optional(),
-  endpoint: z.string().url(),
+  endpoint: z
+    .string()
+    .url()
+    .refine(isAllowedPushEndpoint, { message: "Push endpoint host not allowed." }),
   expirationTime: z.number().nullable().optional(),
   keys: z.object({
     p256dh: z.string().min(1, "Missing p256dh key."),
