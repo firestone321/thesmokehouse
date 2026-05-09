@@ -66,6 +66,20 @@ export function getUgandaServiceDate(reference = new Date()) {
   }).format(reference);
 }
 
+const STORE_OPEN_HOUR = 9;
+const STORE_CLOSE_HOUR = 21;
+
+export function getUgandaStoreStatus(reference = new Date()) {
+  const hour = Number(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "Africa/Kampala",
+      hour: "numeric",
+      hour12: false
+    }).format(reference)
+  );
+  return { isOpen: hour >= STORE_OPEN_HOUR && hour < STORE_CLOSE_HOUR };
+}
+
 export function resolveStockForPortion(
   portionTypeId: number | null | undefined,
   dailyStockMap: Map<number, number>,

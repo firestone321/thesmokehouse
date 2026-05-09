@@ -5,7 +5,7 @@ import { MenuClient } from "@/components/menu-client";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { isLocalhostBypassEnabledForHost } from "@/lib/local-bypass";
-import { getUgandaServiceDate } from "@/lib/menu-stock";
+import { getUgandaServiceDate, getUgandaStoreStatus } from "@/lib/menu-stock";
 import { mapStorefrontMenuRpcRow, StorefrontMenuRpcRow } from "@/lib/shared-schema";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { MenuItem } from "@/lib/types";
@@ -32,6 +32,7 @@ export const metadata: Metadata = {
 
 export default async function HomePage() {
   let menuItems: MenuItem[] = [];
+  const { isOpen } = getUgandaStoreStatus();
   const supabase = getSupabaseAdmin();
   const headerStore = await headers();
   const localBypassEnabled = isLocalhostBypassEnabledForHost(headerStore.get("host"));
@@ -90,10 +91,17 @@ export default async function HomePage() {
                 </a>
               </div>
 
-              <div className="mt-4 inline-flex items-center gap-2 rounded-md border border-emerald-300/25 bg-emerald-950/30 px-3 py-2 text-sm font-semibold text-emerald-100">
-                <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-                <span>Open - Ready in 15 to 60 mins</span>
-              </div>
+              {isOpen ? (
+                <div className="mt-4 inline-flex items-center gap-2 rounded-md border border-emerald-300/25 bg-emerald-950/30 px-3 py-2 text-sm font-semibold text-emerald-100">
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                  <span>Open · Ready in 15 to 60 mins</span>
+                </div>
+              ) : (
+                <div className="mt-4 inline-flex items-center gap-2 rounded-md border border-stone-400/20 bg-stone-900/30 px-3 py-2 text-sm font-semibold text-stone-300">
+                  <span className="h-2.5 w-2.5 rounded-full bg-stone-500" />
+                  <span>Closed · Opens at 9 AM</span>
+                </div>
+              )}
             </div>
           </div>
         </section>
