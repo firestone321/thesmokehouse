@@ -45,7 +45,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: "Unauthorized." }, { status: 401 });
     }
 
-    verifyInternalRequestToken({
+    await verifyInternalRequestToken({
       token: providedToken,
       secret: requireInternalRequestSigningSecret("STOREFRONT_INTERNAL_AUTH_TOKEN"),
       issuer: "thesmokehouse-admin",
