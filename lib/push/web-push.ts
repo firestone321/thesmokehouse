@@ -1,5 +1,6 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
 import webpush from "web-push";
 
 export type StoredPushSubscription = {
@@ -54,8 +55,17 @@ function configureWebPush() {
 }
 
 function buildPushTopic(tag: string | undefined) {
-  const sanitized = tag?.replace(/[^A-Za-z0-9_-]/g, "").slice(0, MAX_PUSH_TOPIC_LENGTH);
-  return sanitized || undefined;
+  if (!tag) {
+    return undefined;
+  }
+  // Apple Web Push rejects Topic headers that are not valid base64url-decodable
+  // strings (responds 400 BadWebPushTopic), even when the characters are
+  // base64url-safe. Hashing the tag and base64url-encoding the digest produces
+  // a deterministic, always-valid topic that all push providers accept.
+  return createHash("sha256")
+    .update(tag, "utf8")
+    .digest("base64url")
+    .slice(0, MAX_PUSH_TOPIC_LENGTH);
 }
 
 export async function sendWebPushNotification(
