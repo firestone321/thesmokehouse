@@ -318,31 +318,46 @@ export async function processOrderReadyPushDispatch(idempotencyKey: string) {
           return {
             success: true,
             staleSubscriptionId: null as string | null,
-            errorMessage: null as string | null
+            errorMessage: null as string | null,
+            statusCode: null as number | null,
+            responseBody: null as string | null
           };
         } catch (error) {
+          const errorDetails = getWebPushErrorDetails(error);
+          const truncatedBody = errorDetails.body?.slice(0, 200) ?? null;
+
           if (isStalePushSubscriptionError(error)) {
+            console.warn("order_ready_push_stale_subscription", {
+              orderId: order.id,
+              subscriptionId: subscription.id,
+              platform: subscription.platform,
+              statusCode: errorDetails.statusCode,
+              responseBody: truncatedBody
+            });
             return {
               success: false,
               staleSubscriptionId: subscription.id,
-              errorMessage: error instanceof Error ? error.message : "stale_push_subscription"
+              errorMessage: error instanceof Error ? error.message : "stale_push_subscription",
+              statusCode: errorDetails.statusCode,
+              responseBody: truncatedBody
             };
           }
 
           const errorMessage = error instanceof Error ? error.message : "unknown_error";
-          const errorDetails = getWebPushErrorDetails(error);
           console.error("order_ready_push_send_failed", {
             orderId: order.id,
             subscriptionId: subscription.id,
             platform: subscription.platform,
             statusCode: errorDetails.statusCode,
-            responseBody: errorDetails.body?.slice(0, 200) ?? null,
+            responseBody: truncatedBody,
             error: errorMessage
           });
           return {
             success: false,
             staleSubscriptionId: null as string | null,
-            errorMessage
+            errorMessage,
+            statusCode: errorDetails.statusCode,
+            responseBody: truncatedBody
           };
         }
       }
@@ -361,10 +376,16 @@ export async function processOrderReadyPushDispatch(idempotencyKey: string) {
       throw new Error(`Push delivery failed: ${retryableErrors[0]}`);
     }
 
+    const lastStaleWithStatus = deliveryResults.find(
+      (result) => result.staleSubscriptionId && result.statusCode !== null
+    );
+
     const lastError = subscriptions.length === 0
       ? "No push subscriptions are linked to this order device."
       : successCount === 0
-        ? "No push subscriptions accepted the notification."
+        ? lastStaleWithStatus
+          ? `Push provider rejected (HTTP ${lastStaleWithStatus.statusCode}): ${lastStaleWithStatus.responseBody ?? "no body"}`
+          : "No push subscriptions accepted the notification."
         : null;
 
     await completePushDispatch({
