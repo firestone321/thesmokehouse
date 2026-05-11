@@ -16,6 +16,22 @@ function readStoredVersion() {
   }
 }
 
+function isStandaloneDisplay() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  try {
+    if (window.matchMedia("(display-mode: standalone)").matches) {
+      return true;
+    }
+  } catch {
+    // matchMedia unavailable; fall through
+  }
+
+  return (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+}
+
 function storeVersion(version: string) {
   try {
     window.localStorage.setItem(VERSION_STORAGE_KEY, version);
@@ -45,6 +61,13 @@ export function PwaRegister() {
   const pendingVersionRef = useRef<string | null>(null);
 
   const showUpdateBanner = useCallback((version?: string) => {
+    if (!isStandaloneDisplay()) {
+      if (version) {
+        storeVersion(version);
+      }
+      return;
+    }
+
     if (version) {
       pendingVersionRef.current = version;
     }
