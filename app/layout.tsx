@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { AppProvider } from "@/components/providers/app-provider";
 import { PwaRegister } from "@/components/pwa-register";
@@ -81,6 +82,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <AppProvider>
           <PwaRegister />
           {children}
+          <Analytics />
           <SpeedInsights />
         </AppProvider>
       </body>
