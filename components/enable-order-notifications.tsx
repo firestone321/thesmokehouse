@@ -214,7 +214,7 @@ export function EnableOrderNotifications({ orderId }: EnableOrderNotificationsPr
 
     if (isIosDevice() && !isStandaloneMode()) {
       setLinkState("error");
-      setMessage("On iPhone, install Smokehouse to your Home Screen before enabling notifications.");
+      setMessage("On iPhone or iPad, install Smokehouse to your Home Screen before enabling notifications.");
       return;
     }
 
@@ -222,7 +222,6 @@ export function EnableOrderNotifications({ orderId }: EnableOrderNotificationsPr
     setMessage("Turning on pickup alerts for this device...");
 
     try {
-      const vapidPublicKey = await loadRuntimeVapidPublicKey();
       const permission = nextPermissionState === "granted"
         ? nextPermissionState
         : await Notification.requestPermission();
@@ -239,6 +238,7 @@ export function EnableOrderNotifications({ orderId }: EnableOrderNotificationsPr
         return;
       }
 
+      const vapidPublicKey = await loadRuntimeVapidPublicKey();
       const registration = await ensureServiceWorkerRegistration();
       const subscription = await createOrRefreshSubscription(registration, vapidPublicKey);
 
