@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useState } from "react";
+import { AccountMenu } from "@/components/auth/account-menu";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 const links: Array<{ href: "/" | "/order" | "/cart" | "/checkout" | "/contact"; label: string; description: string }> = [
@@ -121,6 +122,7 @@ export function SiteHeader() {
             ))}
           </nav>
 
+          <AccountMenu />
           <ThemeToggle />
         </div>
       </header>
@@ -182,6 +184,20 @@ export function SiteHeader() {
                 <span className="mt-1 block text-sm font-semibold leading-5 text-[var(--muted)]">{link.description}</span>
               </Link>
             ))}
+            <Link
+              href="/account"
+              onClick={() => {
+                setMobileMenuPath(null);
+              }}
+              className={`block rounded-md border px-4 py-3.5 transition ${
+                isActive(pathname, "/account")
+                  ? "border-[var(--accent)] bg-white text-[var(--accent)] shadow-[var(--shadow-soft)]"
+                  : "border-transparent bg-[var(--surface-alt)] text-[var(--foreground)] hover:border-[var(--border)] hover:bg-[var(--surface-raised)]"
+              }`}
+            >
+              <span className="block text-base font-black uppercase tracking-wide">Account</span>
+              <span className="mt-1 block text-sm font-semibold leading-5 text-[var(--muted)]">Sign in, create an account, or sign out</span>
+            </Link>
           </nav>
 
           <div className="mt-6 rounded-[1.5rem] border border-[var(--border)] bg-[var(--surface-alt)] p-4">

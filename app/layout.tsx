@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { AppProvider } from "@/components/providers/app-provider";
+import { AuthProvider } from "@/components/providers/auth-provider";
 import { PwaRegister } from "@/components/pwa-register";
 import { getSeoSiteOrigin } from "@/lib/site-url";
 import { getThemeBootstrapScript, LIGHT_THEME_COLOR } from "@/lib/theme";
@@ -80,10 +81,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="min-h-screen bg-[var(--background)] font-body text-[var(--foreground)] antialiased">
         <AppProvider>
-          <PwaRegister />
-          {children}
-          <Analytics />
-          <SpeedInsights />
+          <AuthProvider>
+            <PwaRegister />
+            {children}
+            <Analytics />
+            <SpeedInsights />
+          </AuthProvider>
         </AppProvider>
       </body>
     </html>
