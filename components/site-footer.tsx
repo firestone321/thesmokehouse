@@ -20,6 +20,12 @@ export function SiteFooter() {
           <Link href="/contact" className="font-semibold text-[var(--foreground)] hover:text-[var(--accent)]">
             Contact
           </Link>
+          <Link href="/terms" className="font-semibold text-[var(--foreground)] hover:text-[var(--accent)]">
+            Terms
+          </Link>
+          <Link href="/privacy" className="font-semibold text-[var(--foreground)] hover:text-[var(--accent)]">
+            Privacy
+          </Link>
         </nav>
       </div>
     </footer>
