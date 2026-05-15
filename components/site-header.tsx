@@ -84,8 +84,8 @@ export function SiteHeader() {
                 Browse menu
               </span>
             </span>
-            <span className={`ml-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface)] text-[var(--accent)] transition ${isMobileMenuOpen ? "rotate-180" : ""}`}>
-              v
+            <span className="ml-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface)] text-[var(--accent)] transition">
+              ☰
             </span>
           </button>
 
