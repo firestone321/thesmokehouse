@@ -192,7 +192,7 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
                       </p>
                     ) : null}
 
-                    {accompanimentList.length > 0 ? (
+                    {item.category !== "sides" && accompanimentList.length > 0 ? (
                       <div className="mt-3 border-t border-[#e4d0b9] pt-3">
                         <p className="text-xs font-black uppercase tracking-wide text-[#6a4d38]">
                           Add Accompaniments
