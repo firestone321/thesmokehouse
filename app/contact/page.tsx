@@ -10,6 +10,10 @@ export const metadata: Metadata = {
 
 const whatsappNumber = "256700000000";
 const phoneNumberDisplay = "+256 700 000 000";
+const locationLabel = "JRVV+53 Kikandwa";
+const googleMapsPlaceUrl =
+  "https://www.google.com/maps/place/Firestone+Country+Smokehouse/@0.6429121,32.8400932,1131m/data=!3m2!1e3!4b1!4m6!3m5!1s0x177c3be9438e5e7d:0x93076eb88a9658ab!8m2!3d0.6429121!4d32.8426681!16s%2Fg%2F11zgk3bnv7?entry=ttu&g_ep=EgoyMDI2MDcwOC4wIKXMDSoASAFQAw%3D%3D";
+const googleMapsEmbedUrl = "https://www.google.com/maps?q=0.6429121%2C32.8426681&z=16&output=embed";
 
 export default function ContactPage() {
   return (
@@ -76,7 +80,9 @@ export default function ContactPage() {
                 <div className="rounded-2xl border border-[#D5C6B9] bg-[#FFF8EF] p-4">
                   <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8A6246]">Pickup help</p>
                   <p className="mt-2 text-base font-black text-[#30241F]">Need directions?</p>
-                  <p className="mt-2 text-sm font-semibold leading-6 text-[#6A5647]">Use the map placeholder on the right for the eventual location embed.</p>
+                  <p className="mt-2 text-sm font-semibold leading-6 text-[#6A5647]">
+                    Use the live map to find Firestone Country Smokehouse at {locationLabel}.
+                  </p>
                 </div>
               </div>
             </section>
@@ -84,23 +90,33 @@ export default function ContactPage() {
             <aside className="min-w-0 space-y-4">
               <div className="overflow-hidden rounded-2xl border border-[#C3C5C1] bg-[#F7F7F4] shadow-card">
                 <div className="border-b border-[#D5C6B9] px-5 py-4">
-                  <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#A66B55]">Map placeholder</p>
-                  <h2 className="mt-2 text-2xl font-black text-[#30241F]">Find us here</h2>
+                  <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#A66B55]">Kikandwa location</p>
+                  <h2 className="mt-2 text-2xl font-black text-[#30241F]">Find us in Kikandwa</h2>
                 </div>
-                <div className="relative min-h-[320px] bg-[linear-gradient(135deg,#2C221D_0%,#3B2A21_45%,#5E3D2C_100%)] p-5 text-[#FFF7EC]">
-                  <div className="absolute inset-0 opacity-20">
-                    <div className="absolute left-6 top-8 h-24 w-24 rounded-full bg-[#E6B36B]/30 blur-2xl" />
-                    <div className="absolute right-6 bottom-8 h-28 w-28 rounded-full bg-[#A66B55]/25 blur-3xl" />
+                <div className="relative min-h-[360px] bg-[#DDDCD7]">
+                  <iframe
+                    title={"Map showing Firestone Country Smokehouse at " + locationLabel}
+                    src={googleMapsEmbedUrl}
+                    className="absolute inset-0 h-full w-full border-0"
+                    loading="lazy"
+                    allowFullScreen
+                    referrerPolicy="no-referrer-when-downgrade"
+                  />
+                </div>
+                <div className="flex flex-col gap-4 border-t border-[#D5C6B9] bg-[#FFF8EF] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8A6246]">Firestone Country Smokehouse</p>
+                    <p className="mt-1 text-base font-black text-[#30241F]">{locationLabel}</p>
                   </div>
-                  <div className="relative flex h-full min-h-[280px] flex-col justify-end rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-[1px]">
-                    <div className="rounded-xl border border-[#E6B36B]/30 bg-[#1F1814]/75 p-4">
-                      <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#E6B36B]">Map coming soon</p>
-                      <p className="mt-2 text-lg font-black text-[#FFF7EC]">We’ll drop the live map embed in here.</p>
-                      <p className="mt-2 text-sm font-semibold leading-6 text-[#E0D2C1]">
-                        For now, this section holds the location block so the page is ready for the real place pin later.
-                      </p>
-                    </div>
-                  </div>
+                  <a
+                    href={googleMapsPlaceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label={"Open Firestone Country Smokehouse at " + locationLabel + " in Google Maps"}
+                    className="inline-flex w-fit rounded-md border border-[#6F554A] bg-[#30241F] px-4 py-2.5 text-sm font-extrabold uppercase tracking-wide text-[#EEEEEA] transition hover:border-[#A66B55] hover:bg-[#3A2A24]"
+                  >
+                    Open in Google Maps
+                  </a>
                 </div>
               </div>
 
