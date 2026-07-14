@@ -75,7 +75,7 @@ export default async function HomePage() {
 
           <div className="relative mx-auto flex min-h-[64vh] max-w-7xl items-end px-4 pb-10 pt-14 md:px-8 md:pb-12 md:pt-16">
             <div className="max-w-2xl">
-              <p className="mb-2 text-xs font-bold uppercase tracking-[0.22em] text-amber-200">Countryside Hospitality Wood-Fired Flavour</p>
+              <p className="mb-2 text-xs font-bold uppercase tracking-[0.22em] text-amber-200">Countryside Hospitality • Wood-Fired Flavour</p>
               <h1 className="font-heading text-5xl leading-[0.9] text-cream md:text-7xl">FIRESTONE COUNTRY SMOKEHOUSE</h1>
               <p className="mt-3 text-lg font-semibold text-amber-50 md:text-xl">Genuine Countryside Hospitality.</p>
 
