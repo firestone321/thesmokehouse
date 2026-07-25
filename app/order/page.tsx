@@ -38,6 +38,9 @@ export default function LastGuestOrderPage() {
         if (active) {
           const rememberedToken = getRememberedGuestOrderToken();
           const fallbackMessage = error instanceof Error ? error.message : "There is no active pickup order saved on this device.";
+          const friendlyMessage = fallbackMessage === "Missing valid order access session."
+            ? "You do not have an order saved on this device yet. Place an order first, and you can come back here anytime to check its status."
+            : fallbackMessage;
 
           if (rememberedToken) {
             router.replace(`/order/${rememberedToken}`);
@@ -45,7 +48,7 @@ export default function LastGuestOrderPage() {
           }
 
           setState("empty");
-          setMessage(fallbackMessage);
+          setMessage(friendlyMessage);
         }
       }
     }
