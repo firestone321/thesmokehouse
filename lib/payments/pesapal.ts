@@ -52,7 +52,9 @@ type TokenCache = {
 const provider = "pesapal";
 const PESAPAL_REQUEST_TIMEOUT_MS = 10_000;
 let tokenCache: TokenCache | null = null;
+let tokenRequestPromise: Promise<string> | null = null;
 const ipnRegistrationCache = new Map<string, string>();
+const ipnRegistrationPromises = new Map<string, Promise<string>>();
 
 function getRequiredEnv(name: string) {
   const value = process.env[name]?.trim();
@@ -155,9 +157,27 @@ async function pesapalRequest<T>(path: string, init: RequestInit, options?: { au
     headers.set("Authorization", `Bearer ${await getPesapalAuthToken()}`);
   }
 
-  const response = await fetchWithTimeout(url, {
-    ...init,
-    headers
+  const startedAt = Date.now();
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(url, {
+      ...init,
+      headers
+    });
+  } catch (error) {
+    console.warn("pesapal_api_request_failed", {
+      operation: path,
+      durationMs: Date.now() - startedAt,
+      error: error instanceof Error ? error.message : "unknown_error"
+    });
+    throw error;
+  }
+
+  console.info("pesapal_api_request_completed", {
+    operation: path,
+    durationMs: Date.now() - startedAt,
+    status: response.status,
+    ok: response.ok
   });
 
   const rawText = await response.text();
@@ -175,24 +195,34 @@ async function getPesapalAuthToken() {
     return tokenCache.token;
   }
 
-  const response = await pesapalRequest<PesapalTokenResponse>("/api/Auth/RequestToken", {
-    method: "POST",
-    body: JSON.stringify({
-      consumer_key: getRequiredEnv("PESAPAL_CONSUMER_KEY"),
-      consumer_secret: getRequiredEnv("PESAPAL_CONSUMER_SECRET")
-    })
-  });
-
-  if (!response.token) {
-    throw new Error(response.error?.message ?? response.message ?? "Pesapal token request failed.");
+  if (tokenRequestPromise) {
+    return tokenRequestPromise;
   }
 
-  tokenCache = {
-    token: response.token,
-    expiresAt: Date.now() + 4 * 60_000
-  };
+  tokenRequestPromise = (async () => {
+    const response = await pesapalRequest<PesapalTokenResponse>("/api/Auth/RequestToken", {
+      method: "POST",
+      body: JSON.stringify({
+        consumer_key: getRequiredEnv("PESAPAL_CONSUMER_KEY"),
+        consumer_secret: getRequiredEnv("PESAPAL_CONSUMER_SECRET")
+      })
+    });
 
-  return response.token;
+    if (!response.token) {
+      throw new Error(response.error?.message ?? response.message ?? "Pesapal token request failed.");
+    }
+
+    tokenCache = {
+      token: response.token,
+      expiresAt: Date.now() + 4 * 60_000
+    };
+
+    return response.token;
+  })().finally(() => {
+    tokenRequestPromise = null;
+  });
+
+  return tokenRequestPromise;
 }
 
 async function ensurePesapalIpnId(requestOrigin: string) {
@@ -201,24 +231,36 @@ async function ensurePesapalIpnId(requestOrigin: string) {
     return cachedIpnId;
   }
 
-  const response = await pesapalRequest<PesapalRegisterIpnResponse>(
-    "/api/URLSetup/RegisterIPN",
-    {
-      method: "POST",
-      body: JSON.stringify({
-        url: getIpnUrl(requestOrigin),
-        ipn_notification_type: "GET"
-      })
-    },
-    { authenticated: true }
-  );
-
-  if (!response.ipn_id) {
-    throw new Error(response.error?.message ?? response.message ?? "Pesapal IPN registration failed.");
+  const inFlightRegistration = ipnRegistrationPromises.get(requestOrigin);
+  if (inFlightRegistration) {
+    return inFlightRegistration;
   }
 
-  ipnRegistrationCache.set(requestOrigin, response.ipn_id);
-  return response.ipn_id;
+  const registrationPromise = (async () => {
+    const response = await pesapalRequest<PesapalRegisterIpnResponse>(
+      "/api/URLSetup/RegisterIPN",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          url: getIpnUrl(requestOrigin),
+          ipn_notification_type: "GET"
+        })
+      },
+      { authenticated: true }
+    );
+
+    if (!response.ipn_id) {
+      throw new Error(response.error?.message ?? response.message ?? "Pesapal IPN registration failed.");
+    }
+
+    ipnRegistrationCache.set(requestOrigin, response.ipn_id);
+    return response.ipn_id;
+  })().finally(() => {
+    ipnRegistrationPromises.delete(requestOrigin);
+  });
+
+  ipnRegistrationPromises.set(requestOrigin, registrationPromise);
+  return registrationPromise;
 }
 
 export async function submitPesapalOrderRequest(input: {

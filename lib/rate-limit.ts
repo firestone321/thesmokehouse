@@ -9,6 +9,11 @@ export type RateLimitResult = {
   retryAfterSeconds: number;
 };
 
+export type StorefrontCheckoutRateLimitResult = {
+  route: RateLimitResult;
+  phone: RateLimitResult;
+};
+
 type EnforceRateLimitOptions = {
   bucketSuffix?: string | null;
 };
@@ -82,5 +87,49 @@ export async function enforceRateLimit(
     allowed: Boolean(result.allowed),
     remaining: Number(result.remaining ?? 0),
     retryAfterSeconds: Number(result.retry_after_seconds ?? 1)
+  };
+}
+
+export async function enforceStorefrontCheckoutRateLimits(
+  request: Request,
+  phone: string,
+  options?: {
+    routeLimit?: number;
+    phoneLimit?: number;
+    windowMs?: number;
+  }
+): Promise<StorefrontCheckoutRateLimitResult> {
+  const routeLimit = options?.routeLimit ?? 8;
+  const phoneLimit = options?.phoneLimit ?? 4;
+  const windowMs = options?.windowMs ?? 10 * 60 * 1000;
+  const { data, error } = await getSupabaseAdmin().rpc("consume_storefront_checkout_rate_limits", {
+    p_route_key: buildRateLimitKey(request, "order-create"),
+    p_route_max: routeLimit,
+    p_phone_key: buildRateLimitKey(request, "order-create-phone", { bucketSuffix: phone }),
+    p_phone_max: phoneLimit,
+    p_window_seconds: Math.ceil(windowMs / 1000)
+  });
+
+  if (error) {
+    throw new Error(`Checkout rate limit check failed: ${error.message}`);
+  }
+
+  const result = Array.isArray(data) ? data[0] : data;
+  if (!result || typeof result !== "object") {
+    throw new Error("Checkout rate limit check returned no result.");
+  }
+
+  const row = result as Record<string, unknown>;
+  return {
+    route: {
+      allowed: Boolean(row.route_allowed),
+      remaining: Number(row.route_remaining ?? 0),
+      retryAfterSeconds: Number(row.route_retry_after_seconds ?? 1)
+    },
+    phone: {
+      allowed: Boolean(row.phone_allowed),
+      remaining: Number(row.phone_remaining ?? 0),
+      retryAfterSeconds: Number(row.phone_retry_after_seconds ?? 1)
+    }
   };
 }

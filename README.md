@@ -69,6 +69,13 @@ This storefront now uses the shared Smokehouse operational schema owned by the a
 - `db/phase-21-pesapal-paid-reservations.sql`
 - `db/phase-22-admin-rls-lockdown.sql`
 - `db/phase-23-orders-realtime-publication.sql`
+- `db/phase-31-public-api-rate-limits.sql`
+- `db/phase-37-durable-pending-payment-recovery.sql`
+- `db/phase-39-storefront-menu-rpc.sql`
+- `db/phase-40-checkout-idempotency.sql`
+- `db/phase-42-durable-checkout-idempotency-binding.sql`
+- `db/phase-45-grouped-order-item-presentation.sql`
+- `db/phase-59-storefront-checkout-hot-path.sql`
 
 The historical standalone schema in `supabase/schema.sql` is kept only as an archive of the first storefront prototype and should not be applied to a current Smokehouse database.
 
@@ -79,7 +86,8 @@ The historical standalone schema in `supabase/schema.sql` is kept only as an arc
 - Order totals are recomputed server-side from database prices.
 - Public order tracking uses `public_token`, not sequential database IDs.
 - Stock reservation is owned by database functions after payment verification.
-- Basic in-memory rate limiting protects order creation by IP and phone hash.
+- Durable database rate limiting protects order creation by IP/device and phone hash.
+- Phase 59 keeps rate limiting, order/item creation, payment-attempt state, recovery enqueueing, and checkout idempotency durable while collapsing their network round trips.
 
 ## PWA
 

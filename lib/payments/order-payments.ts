@@ -44,9 +44,29 @@ type OrderPaymentRow = {
   }> | null;
 };
 
-type PaymentAttemptRow = {
+export type PreparedCheckoutPayment = {
+  orderId: number;
+  orderNumber: string;
+  publicToken: string;
+  pickupCode: string | null;
+  customerName: string | null;
+  customerPhone: string | null;
+  totalAmount: number;
+  paymentAttemptId: number;
+};
+
+type BeginStorefrontPaymentAttemptRow = {
   id: number;
-  attempt_number: number;
+  order_number: string;
+  public_token: string;
+  pickup_code: string | null;
+  customer_name: string | null;
+  customer_phone: string | null;
+  total_amount: number;
+  payment_attempt_id: number | null;
+  payment_status: string;
+  payment_redirect_url: string | null;
+  reused: boolean;
 };
 
 type PendingPaymentRecoveryRow = {
@@ -244,64 +264,6 @@ function buildSnapshot(row: OrderPaymentRow, options?: { verified?: boolean; hin
   };
 }
 
-async function getNextAttemptNumber(orderId: number) {
-  const { data, error } = await getSupabaseAdmin()
-    .from("payment_attempts")
-    .select("attempt_number")
-    .eq("order_id", orderId)
-    .order("attempt_number", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(`Unable to load payment attempts: ${error.message}`);
-  }
-
-  return Number(data?.attempt_number ?? 0) + 1;
-}
-
-async function createPaymentAttempt(input: {
-  orderId: number;
-  lifecycleStatus: "initiating" | "initiated" | "rejected" | "failed";
-  paymentStatus: PaymentStatus;
-  providerReference?: string | null;
-  redirectUrl?: string | null;
-  providerStatus?: string | null;
-  providerMessage?: string | null;
-  paymentReference?: string | null;
-  rawResponse?: unknown;
-}): Promise<PaymentAttemptRow> {
-  const attemptNumber = await getNextAttemptNumber(input.orderId);
-  const { data, error } = await getSupabaseAdmin()
-    .from("payment_attempts")
-    .insert({
-      order_id: input.orderId,
-      provider: "pesapal",
-      attempt_number: attemptNumber,
-      lifecycle_status: input.lifecycleStatus,
-      payment_status: input.paymentStatus,
-      provider_reference: input.providerReference ?? null,
-      redirect_url: input.redirectUrl ?? null,
-      provider_status: input.providerStatus ?? null,
-      provider_message: input.providerMessage ?? null,
-      payment_reference: input.paymentReference ?? null,
-      raw_response: input.rawResponse ?? null
-    })
-    .select("id, attempt_number")
-    .single();
-
-  if (error || !data) {
-    throw new Error(`Unable to create payment attempt: ${error?.message ?? "Unknown error"}`);
-  }
-
-  await getSupabaseAdmin()
-    .from("orders")
-    .update({ active_payment_attempt_id: data.id })
-    .eq("id", input.orderId);
-
-  return data as PaymentAttemptRow;
-}
-
 async function updateActivePaymentAttempt(order: OrderPaymentRow, input: {
   lifecycleStatus?: "initiating" | "initiated" | "rejected" | "failed";
   paymentStatus?: PaymentStatus;
@@ -494,90 +456,100 @@ async function reschedulePendingPaymentRecovery(row: PendingPaymentRecoveryRow, 
   }
 }
 
-export async function initiateOrderPaymentForOrder(publicToken: string, options: { requestOrigin: string }) {
-  const row = await getOrderPaymentRow(publicToken);
-  if (!row) {
-    throw new Error("Order not found.");
-  }
-
-  const paymentStatus = normalizeStoredPaymentStatus(row.payment_status);
-  if (paymentStatus === "paid") {
-    throw new Error("Order has already been paid.");
-  }
-
-  if (paymentStatus === "cancelled") {
-    throw new Error("Order payment has been cancelled.");
-  }
-
-  if (row.order_tracking_id && row.payment_redirect_url && paymentStatus === "pending") {
-    await enqueuePendingPaymentRecoverySafely({
-      orderId: row.id,
-      orderTrackingId: row.order_tracking_id,
-      reason: "Existing tracked pending payment reused for checkout."
-    });
-
-    return {
-      publicToken: row.public_token,
-      redirectUrl: row.payment_redirect_url,
-      paymentStatus
-    };
-  }
-
-  await createPaymentAttempt({
-    orderId: row.id,
-    lifecycleStatus: "initiating",
-    paymentStatus: "pending"
-  });
-
+async function submitAndFinalizePreparedOrderPayment(
+  row: PreparedCheckoutPayment,
+  options: { requestOrigin: string }
+) {
   const response = await submitPesapalOrderRequest({
-    publicToken: row.public_token,
-    amountUGX: row.total_amount,
-    description: `Smokehouse order ${row.order_number}`,
-    customerName: row.customer_name ?? "Customer",
-    phone: row.customer_phone ?? null,
+    publicToken: row.publicToken,
+    amountUGX: row.totalAmount,
+    description: `Smokehouse order ${row.orderNumber}`,
+    customerName: row.customerName ?? "Customer",
+    phone: row.customerPhone ?? null,
     requestOrigin: options.requestOrigin
   });
 
-  const activeAttempt = await createPaymentAttempt({
-    orderId: row.id,
-    lifecycleStatus: "initiated",
-    paymentStatus: "pending",
-    providerReference: response.order_tracking_id ?? null,
-    redirectUrl: response.redirect_url ?? null,
-    providerStatus: response.status ?? null,
-    providerMessage: response.message ?? null,
-    rawResponse: response
-  });
-
-  const { error } = await getSupabaseAdmin()
-    .from("orders")
-    .update({
-      payment_status: "pending",
-      payment_provider: "pesapal",
-      order_tracking_id: response.order_tracking_id ?? null,
-      payment_redirect_url: response.redirect_url ?? null,
-      payment_initiation_failure_code: null,
-      payment_initiation_failure_message: null,
-      payment_initiation_failed_at: null,
-      active_payment_attempt_id: activeAttempt.id
-    })
-    .eq("id", row.id);
-
-  if (error) {
-    throw new Error(`Unable to save payment initiation: ${error.message}`);
+  if (!response.order_tracking_id || !response.redirect_url) {
+    throw new Error("Pesapal order request did not return durable redirect details.");
   }
 
-  await enqueuePendingPaymentRecoverySafely({
-    orderId: row.id,
-    orderTrackingId: response.order_tracking_id ?? null,
-    reason: "Pesapal payment initiation created a tracked pending payment."
+  const { error } = await getSupabaseAdmin().rpc("finalize_storefront_payment_initiation", {
+    p_public_token: row.publicToken,
+    p_payment_attempt_id: row.paymentAttemptId,
+    p_provider_reference: response.order_tracking_id,
+    p_redirect_url: response.redirect_url,
+    p_provider_status: response.status ?? null,
+    p_provider_message: response.message ?? null,
+    p_raw_response: response
   });
 
+  if (error) {
+    throw new Error(`Unable to finalize payment initiation: ${error.message}`);
+  }
+
   return {
-    publicToken: row.public_token,
-    redirectUrl: response.redirect_url ?? null,
+    publicToken: row.publicToken,
+    redirectUrl: response.redirect_url,
     paymentStatus: "pending" as const
   };
+}
+
+export async function initiatePreparedOrderPayment(
+  row: PreparedCheckoutPayment,
+  options: { requestOrigin: string }
+) {
+  return submitAndFinalizePreparedOrderPayment(row, options);
+}
+
+export async function initiateOrderPaymentForOrder(publicToken: string, options: { requestOrigin: string }) {
+  const { data, error } = await getSupabaseAdmin().rpc("begin_storefront_payment_attempt", {
+    p_public_token: publicToken
+  });
+
+  if (error) {
+    if (error.message?.includes("order_not_found")) {
+      throw new Error("Order not found.");
+    }
+    if (error.message?.includes("order_already_paid")) {
+      throw new Error("Order has already been paid.");
+    }
+    if (error.message?.includes("order_payment_cancelled")) {
+      throw new Error("Order payment has been cancelled.");
+    }
+    throw new Error(`Unable to begin payment initiation: ${error.message}`);
+  }
+
+  const rows = data as unknown as BeginStorefrontPaymentAttemptRow[] | null;
+  const row = rows?.[0];
+  if (!row) {
+    throw new Error("Unable to begin payment initiation.");
+  }
+
+  if (row.reused && row.payment_redirect_url) {
+    return {
+      publicToken: row.public_token,
+      redirectUrl: row.payment_redirect_url,
+      paymentStatus: normalizeStoredPaymentStatus(row.payment_status)
+    };
+  }
+
+  if (!row.payment_attempt_id) {
+    throw new Error("Payment attempt was not created.");
+  }
+
+  return submitAndFinalizePreparedOrderPayment(
+    {
+      orderId: row.id,
+      orderNumber: row.order_number,
+      publicToken: row.public_token,
+      pickupCode: row.pickup_code,
+      customerName: row.customer_name,
+      customerPhone: row.customer_phone,
+      totalAmount: row.total_amount,
+      paymentAttemptId: row.payment_attempt_id
+    },
+    options
+  );
 }
 
 export async function cancelRejectedOrderPaymentInitiation(input: {
