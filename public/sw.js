@@ -1,6 +1,6 @@
-const SHELL_CACHE_NAME = "smokehouse-shell-v4";
-const RUNTIME_CACHE_NAME = "smokehouse-runtime-v4";
-const IMAGE_CACHE_NAME = "smokehouse-images-v4";
+const SHELL_CACHE_NAME = "smokehouse-shell-v5";
+const RUNTIME_CACHE_NAME = "smokehouse-runtime-v5";
+const IMAGE_CACHE_NAME = "smokehouse-images-v5";
 const CACHE_NAMES = [SHELL_CACHE_NAME, RUNTIME_CACHE_NAME, IMAGE_CACHE_NAME];
 const STATIC_NAVIGATION_PATHS = ["/", "/cart", "/offline"];
 const STATIC_ASSET_PATHS = [
@@ -166,42 +166,71 @@ self.addEventListener("push", (event) => {
   event.waitUntil(self.registration.showNotification(title, options));
 });
 
+function getNotificationTargetUrl(notificationData) {
+  const notificationUrl = notificationData && typeof notificationData.url === "string"
+    ? notificationData.url
+    : "/";
+
+  try {
+    const candidateUrl = new URL(notificationUrl, self.location.origin);
+    return candidateUrl.origin === self.location.origin
+      ? candidateUrl.href
+      : new URL("/", self.location.origin).href;
+  } catch {
+    return new URL("/", self.location.origin).href;
+  }
+}
+
+async function openNotificationTarget(targetUrl) {
+  const windowClients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+
+  for (const client of windowClients) {
+    if (client.url === targetUrl && "focus" in client) {
+      try {
+        return await client.focus();
+      } catch {
+        // Continue to a fresh window or a different existing client.
+      }
+    }
+  }
+
+  if (self.clients.openWindow) {
+    try {
+      const openedClient = await self.clients.openWindow(targetUrl);
+      if (openedClient && "focus" in openedClient) {
+        return await openedClient.focus();
+      }
+      if (openedClient) {
+        return openedClient;
+      }
+    } catch {
+      // Fall back to navigating an existing same-origin client.
+    }
+  }
+
+  for (const client of windowClients) {
+    try {
+      const clientUrl = new URL(client.url);
+      if (clientUrl.origin !== self.location.origin || !("navigate" in client)) {
+        continue;
+      }
+
+      const navigatedClient = await client.navigate(targetUrl);
+      if (navigatedClient && "focus" in navigatedClient) {
+        return await navigatedClient.focus();
+      }
+      if (navigatedClient) {
+        return navigatedClient;
+      }
+    } catch {
+      // Try the next eligible client.
+    }
+  }
+
+  return undefined;
+}
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-
-  const notificationUrl = event.notification.data && typeof event.notification.data.url === "string"
-    ? event.notification.data.url
-    : "/";
-  const candidateUrl = new URL(notificationUrl, self.location.origin);
-  const targetUrl = candidateUrl.origin === self.location.origin
-    ? candidateUrl.href
-    : new URL("/", self.location.origin).href;
-
-  event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (clients) => {
-      for (const client of clients) {
-        if (client.url === targetUrl && "focus" in client) {
-          return client.focus();
-        }
-      }
-
-      for (const client of clients) {
-        if (client.url.startsWith(self.location.origin)) {
-          if ("navigate" in client) {
-            await client.navigate(targetUrl);
-          }
-
-          if ("focus" in client) {
-            return client.focus();
-          }
-        }
-      }
-
-      if (self.clients.openWindow) {
-        return self.clients.openWindow(targetUrl);
-      }
-
-      return undefined;
-    })
-  );
+  event.waitUntil(openNotificationTarget(getNotificationTargetUrl(event.notification.data)));
 });

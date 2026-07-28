@@ -6,6 +6,7 @@ import {
 } from "@/lib/internal-auth";
 
 const ADMIN_PAID_ORDER_PUSH_PURPOSE = "admin_paid_order_push_dispatch";
+const PRODUCTION_ADMIN_DASHBOARD_BASE_URL = "https://admin.firestonesmokehouse.com";
 const ADMIN_PAID_ORDER_PUSH_TIMEOUT_MS = 8_000;
 
 function readEnv(name: string) {
@@ -13,8 +14,32 @@ function readEnv(name: string) {
   return value ? value : null;
 }
 
+function isRedirectingVercelAdminHostname(hostname: string) {
+  const normalizedHostname = hostname.toLowerCase();
+  return (
+    normalizedHostname === "thesmokehouse-admin.vercel.app"
+    || (
+      normalizedHostname.startsWith("thesmokehouse-admin-")
+      && normalizedHostname.endsWith(".vercel.app")
+    )
+  );
+}
+
 function getAdminDashboardBaseUrl() {
-  return readEnv("ADMIN_DASHBOARD_BASE_URL")?.replace(/\/+$/, "") ?? null;
+  const configuredBaseUrl = readEnv("ADMIN_DASHBOARD_BASE_URL");
+  if (!configuredBaseUrl) {
+    return process.env.NODE_ENV === "production" ? PRODUCTION_ADMIN_DASHBOARD_BASE_URL : null;
+  }
+
+  const parsedBaseUrl = new URL(configuredBaseUrl);
+  if (
+    process.env.NODE_ENV === "production"
+    && isRedirectingVercelAdminHostname(parsedBaseUrl.hostname)
+  ) {
+    return PRODUCTION_ADMIN_DASHBOARD_BASE_URL;
+  }
+
+  return parsedBaseUrl.origin;
 }
 
 export function isAdminPaidOrderPushKickConfigured() {
@@ -48,6 +73,7 @@ export async function triggerAdminPaidOrderPushDispatch(orderId: number) {
     },
     body: JSON.stringify({ orderId }),
     cache: "no-store",
+    redirect: "error",
     signal: AbortSignal.timeout(ADMIN_PAID_ORDER_PUSH_TIMEOUT_MS)
   });
 
