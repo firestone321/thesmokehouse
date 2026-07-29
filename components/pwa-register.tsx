@@ -8,6 +8,11 @@ type VersionPayload = {
   version?: unknown;
 };
 
+type NotificationTargetMessage = {
+  type?: unknown;
+  url?: unknown;
+};
+
 function readStoredVersion() {
   try {
     return window.localStorage.getItem(VERSION_STORAGE_KEY);
@@ -37,6 +42,28 @@ function storeVersion(version: string) {
     window.localStorage.setItem(VERSION_STORAGE_KEY, version);
   } catch {
     return;
+  }
+}
+
+function readNotificationTarget(data: unknown) {
+  if (!data || typeof data !== "object") {
+    return null;
+  }
+
+  const message = data as NotificationTargetMessage;
+  if (message.type !== "OPEN_NOTIFICATION_TARGET" || typeof message.url !== "string") {
+    return null;
+  }
+
+  try {
+    const targetUrl = new URL(message.url, window.location.origin);
+    if (targetUrl.origin !== window.location.origin || !targetUrl.pathname.startsWith("/order/")) {
+      return null;
+    }
+
+    return `${targetUrl.pathname}${targetUrl.search}${targetUrl.hash}`;
+  } catch {
+    return null;
   }
 }
 
@@ -129,7 +156,18 @@ export function PwaRegister() {
       showUpdateBanner();
     };
 
+    const handleServiceWorkerMessage = (event: MessageEvent) => {
+      const target = readNotificationTarget(event.data);
+      if (!target || `${window.location.pathname}${window.location.search}${window.location.hash}` === target) {
+        return;
+      }
+
+      window.location.assign(target);
+    };
+
     navigator.serviceWorker.addEventListener("controllerchange", handleControllerChange);
+    navigator.serviceWorker.addEventListener("message", handleServiceWorkerMessage);
+    navigator.serviceWorker.startMessages();
 
     void navigator.serviceWorker.register("/sw.js", {
       updateViaCache: "none"
@@ -164,6 +202,7 @@ export function PwaRegister() {
     return () => {
       cancelled = true;
       navigator.serviceWorker.removeEventListener("controllerchange", handleControllerChange);
+      navigator.serviceWorker.removeEventListener("message", handleServiceWorkerMessage);
     };
   }, [showUpdateBanner]);
 

@@ -1,6 +1,6 @@
-const SHELL_CACHE_NAME = "smokehouse-shell-v5";
-const RUNTIME_CACHE_NAME = "smokehouse-runtime-v5";
-const IMAGE_CACHE_NAME = "smokehouse-images-v5";
+const SHELL_CACHE_NAME = "smokehouse-shell-v6";
+const RUNTIME_CACHE_NAME = "smokehouse-runtime-v6";
+const IMAGE_CACHE_NAME = "smokehouse-images-v6";
 const CACHE_NAMES = [SHELL_CACHE_NAME, RUNTIME_CACHE_NAME, IMAGE_CACHE_NAME];
 const STATIC_NAVIGATION_PATHS = ["/", "/cart", "/offline"];
 const STATIC_ASSET_PATHS = [
@@ -152,14 +152,18 @@ self.addEventListener("push", (event) => {
   }
 
   const title = typeof payload.title === "string" ? payload.title : "Order Ready";
+  const targetUrl = getNotificationTargetUrl({
+    url: typeof payload.url === "string" ? payload.url : "/"
+  });
   const options = {
     body: typeof payload.body === "string" ? payload.body : "Your Smokehouse order is ready for pickup.",
     icon: typeof payload.icon === "string" ? payload.icon : "/icons/icon-192.png",
     badge: typeof payload.badge === "string" ? payload.badge : "/icons/icon-192.png",
     tag: typeof payload.tag === "string" ? payload.tag : "order-ready",
+    navigate: targetUrl,
     data: {
       ...(payload.data && typeof payload.data === "object" ? payload.data : {}),
-      url: typeof payload.url === "string" ? payload.url : "/"
+      url: targetUrl
     }
   };
 
@@ -181,27 +185,89 @@ function getNotificationTargetUrl(notificationData) {
   }
 }
 
+async function navigateAndFocusClient(client, targetUrl) {
+  let targetClient = client;
+
+  if (client.url !== targetUrl && "navigate" in client) {
+    try {
+      targetClient = await client.navigate(targetUrl) || client;
+    } catch {
+      return undefined;
+    }
+  }
+
+  if (targetClient.url !== targetUrl) {
+    return undefined;
+  }
+
+  if ("focus" in targetClient) {
+    try {
+      return await targetClient.focus();
+    } catch {
+      return undefined;
+    }
+  }
+
+  return targetClient;
+}
+
+async function messageAndFocusClient(client, targetUrl) {
+  if (!("postMessage" in client)) {
+    return undefined;
+  }
+
+  try {
+    client.postMessage({
+      type: "OPEN_NOTIFICATION_TARGET",
+      url: targetUrl
+    });
+  } catch {
+    return undefined;
+  }
+
+  if ("focus" in client) {
+    try {
+      await client.focus();
+    } catch {
+      // WebKit can report a newly launched Home Screen client before it is focusable.
+    }
+  }
+
+  return client;
+}
+
 async function openNotificationTarget(targetUrl) {
   const windowClients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
 
   for (const client of windowClients) {
-    if (client.url === targetUrl && "focus" in client) {
-      try {
-        return await client.focus();
-      } catch {
-        // Continue to a fresh window or a different existing client.
-      }
+    if (client.url !== targetUrl) {
+      continue;
+    }
+
+    const focusedClient = await navigateAndFocusClient(client, targetUrl);
+    if (focusedClient) {
+      return focusedClient;
+    }
+
+    const messagedClient = await messageAndFocusClient(client, targetUrl);
+    if (messagedClient) {
+      return messagedClient;
     }
   }
 
   if (self.clients.openWindow) {
     try {
       const openedClient = await self.clients.openWindow(targetUrl);
-      if (openedClient && "focus" in openedClient) {
-        return await openedClient.focus();
-      }
       if (openedClient) {
-        return openedClient;
+        const focusedClient = await navigateAndFocusClient(openedClient, targetUrl);
+        if (focusedClient) {
+          return focusedClient;
+        }
+
+        const messagedClient = await messageAndFocusClient(openedClient, targetUrl);
+        if (messagedClient) {
+          return messagedClient;
+        }
       }
     } catch {
       // Fall back to navigating an existing same-origin client.
@@ -215,12 +281,14 @@ async function openNotificationTarget(targetUrl) {
         continue;
       }
 
-      const navigatedClient = await client.navigate(targetUrl);
-      if (navigatedClient && "focus" in navigatedClient) {
-        return await navigatedClient.focus();
+      const focusedClient = await navigateAndFocusClient(client, targetUrl);
+      if (focusedClient) {
+        return focusedClient;
       }
-      if (navigatedClient) {
-        return navigatedClient;
+
+      const messagedClient = await messageAndFocusClient(client, targetUrl);
+      if (messagedClient) {
+        return messagedClient;
       }
     } catch {
       // Try the next eligible client.
