@@ -67,6 +67,13 @@ function readNotificationTarget(data: unknown) {
   }
 }
 
+function requestPendingNotificationTarget(registration: ServiceWorkerRegistration) {
+  const worker = navigator.serviceWorker.controller ?? registration.active;
+  worker?.postMessage({
+    type: "CONSUME_NOTIFICATION_TARGET"
+  });
+}
+
 async function fetchCurrentVersion() {
   const response = await fetch("/api/app-version", {
     cache: "no-store",
@@ -148,6 +155,13 @@ export function PwaRegister() {
     let hasPromptedForControllerChange = false;
 
     const handleControllerChange = () => {
+      const controller = navigator.serviceWorker.controller;
+      if (controller) {
+        controller.postMessage({
+          type: "CONSUME_NOTIFICATION_TARGET"
+        });
+      }
+
       if (hasPromptedForControllerChange) {
         return;
       }
@@ -179,6 +193,8 @@ export function PwaRegister() {
       if (registration.waiting && navigator.serviceWorker.controller) {
         showUpdateBanner();
       }
+
+      requestPendingNotificationTarget(registration);
 
       registration.addEventListener("updatefound", () => {
         const worker = registration.installing;

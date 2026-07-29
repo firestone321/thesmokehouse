@@ -1,7 +1,10 @@
-const SHELL_CACHE_NAME = "smokehouse-shell-v6";
-const RUNTIME_CACHE_NAME = "smokehouse-runtime-v6";
-const IMAGE_CACHE_NAME = "smokehouse-images-v6";
-const CACHE_NAMES = [SHELL_CACHE_NAME, RUNTIME_CACHE_NAME, IMAGE_CACHE_NAME];
+const SHELL_CACHE_NAME = "smokehouse-shell-v7";
+const RUNTIME_CACHE_NAME = "smokehouse-runtime-v7";
+const IMAGE_CACHE_NAME = "smokehouse-images-v7";
+const NOTIFICATION_INTENT_CACHE_NAME = "smokehouse-notification-intent-v1";
+const NOTIFICATION_INTENT_CACHE_KEY = "/__smokehouse-notification-intent__";
+const NOTIFICATION_INTENT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const CACHE_NAMES = [SHELL_CACHE_NAME, RUNTIME_CACHE_NAME, IMAGE_CACHE_NAME, NOTIFICATION_INTENT_CACHE_NAME];
 const STATIC_NAVIGATION_PATHS = ["/", "/cart", "/offline"];
 const STATIC_ASSET_PATHS = [
   "/manifest.webmanifest",
@@ -90,6 +93,69 @@ async function staleWhileRevalidate(cacheName, request) {
   throw new Error("Unable to fulfill request from cache or network.");
 }
 
+function getNotificationIntentRequest() {
+  return new Request(new URL(NOTIFICATION_INTENT_CACHE_KEY, self.location.origin));
+}
+
+function isOrderNotificationTarget(targetUrl) {
+  try {
+    const parsedUrl = new URL(targetUrl);
+    return parsedUrl.origin === self.location.origin && parsedUrl.pathname.startsWith("/order/");
+  } catch {
+    return false;
+  }
+}
+
+async function rememberNotificationTarget(targetUrl) {
+  if (!isOrderNotificationTarget(targetUrl)) {
+    return;
+  }
+
+  const cache = await caches.open(NOTIFICATION_INTENT_CACHE_NAME);
+  await cache.put(
+    getNotificationIntentRequest(),
+    new Response(JSON.stringify({
+      url: targetUrl,
+      createdAt: Date.now()
+    }), {
+      headers: {
+        "Content-Type": "application/json"
+      }
+    })
+  );
+}
+
+async function consumeNotificationTarget() {
+  const cache = await caches.open(NOTIFICATION_INTENT_CACHE_NAME);
+  const intentRequest = getNotificationIntentRequest();
+  const response = await cache.match(intentRequest);
+
+  if (!response) {
+    return null;
+  }
+
+  await cache.delete(intentRequest);
+
+  try {
+    const payload = await response.json();
+    const createdAt = typeof payload?.createdAt === "number" ? payload.createdAt : 0;
+    const targetUrl = typeof payload?.url === "string" ? payload.url : "";
+    const isFresh = createdAt > 0 && Date.now() - createdAt <= NOTIFICATION_INTENT_MAX_AGE_MS;
+    return isFresh && isOrderNotificationTarget(targetUrl) ? targetUrl : null;
+  } catch {
+    return null;
+  }
+}
+
+async function handleRootNavigation(request, options) {
+  const notificationTarget = await consumeNotificationTarget().catch(() => null);
+  if (notificationTarget) {
+    return Response.redirect(notificationTarget, 302);
+  }
+
+  return networkFirstNavigation(request, options);
+}
+
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(SHELL_CACHE_NAME).then((cache) => cache.addAll(STATIC_PATHS)));
   self.skipWaiting();
@@ -116,7 +182,11 @@ self.addEventListener("fetch", (event) => {
     const normalizedPathname = normalizePathname(url.pathname);
     const cacheableNavigation = !url.search && !isRestrictedDynamicNavigation(normalizedPathname) && isCacheableNavigationPath(normalizedPathname);
 
-    event.respondWith(networkFirstNavigation(request, { cacheable: cacheableNavigation }));
+    event.respondWith(
+      normalizedPathname === "/"
+        ? handleRootNavigation(request, { cacheable: cacheableNavigation })
+        : networkFirstNavigation(request, { cacheable: cacheableNavigation })
+    );
     return;
   }
 
@@ -160,14 +230,18 @@ self.addEventListener("push", (event) => {
     icon: typeof payload.icon === "string" ? payload.icon : "/icons/icon-192.png",
     badge: typeof payload.badge === "string" ? payload.badge : "/icons/icon-192.png",
     tag: typeof payload.tag === "string" ? payload.tag : "order-ready",
-    navigate: targetUrl,
     data: {
       ...(payload.data && typeof payload.data === "object" ? payload.data : {}),
       url: targetUrl
     }
   };
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(
+    Promise.all([
+      rememberNotificationTarget(targetUrl).catch(() => undefined),
+      self.registration.showNotification(title, options)
+    ])
+  );
 });
 
 function getNotificationTargetUrl(notificationData) {
@@ -255,6 +329,27 @@ async function openNotificationTarget(targetUrl) {
     }
   }
 
+  for (const client of windowClients) {
+    try {
+      const clientUrl = new URL(client.url);
+      if (clientUrl.origin !== self.location.origin || client.url === targetUrl) {
+        continue;
+      }
+
+      const focusedClient = await navigateAndFocusClient(client, targetUrl);
+      if (focusedClient) {
+        return focusedClient;
+      }
+
+      const messagedClient = await messageAndFocusClient(client, targetUrl);
+      if (messagedClient) {
+        return messagedClient;
+      }
+    } catch {
+      // Try the next eligible existing client.
+    }
+  }
+
   if (self.clients.openWindow) {
     try {
       const openedClient = await self.clients.openWindow(targetUrl);
@@ -270,28 +365,7 @@ async function openNotificationTarget(targetUrl) {
         }
       }
     } catch {
-      // Fall back to navigating an existing same-origin client.
-    }
-  }
-
-  for (const client of windowClients) {
-    try {
-      const clientUrl = new URL(client.url);
-      if (clientUrl.origin !== self.location.origin || !("navigate" in client)) {
-        continue;
-      }
-
-      const focusedClient = await navigateAndFocusClient(client, targetUrl);
-      if (focusedClient) {
-        return focusedClient;
-      }
-
-      const messagedClient = await messageAndFocusClient(client, targetUrl);
-      if (messagedClient) {
-        return messagedClient;
-      }
-    } catch {
-      // Try the next eligible client.
+      // The notification click cannot open another client.
     }
   }
 
@@ -300,5 +374,31 @@ async function openNotificationTarget(targetUrl) {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  event.waitUntil(openNotificationTarget(getNotificationTargetUrl(event.notification.data)));
+  const targetUrl = getNotificationTargetUrl(event.notification.data);
+  event.waitUntil(
+    rememberNotificationTarget(targetUrl)
+      .catch(() => undefined)
+      .then(() => openNotificationTarget(targetUrl))
+  );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type !== "CONSUME_NOTIFICATION_TARGET" || !event.source || !("postMessage" in event.source)) {
+    return;
+  }
+
+  event.waitUntil(
+    consumeNotificationTarget()
+      .catch(() => null)
+      .then((targetUrl) => {
+        if (!targetUrl) {
+          return;
+        }
+
+        event.source.postMessage({
+          type: "OPEN_NOTIFICATION_TARGET",
+          url: targetUrl
+        });
+      })
+  );
 });
