@@ -1,9 +1,9 @@
-const SHELL_CACHE_NAME = "smokehouse-shell-v7";
-const RUNTIME_CACHE_NAME = "smokehouse-runtime-v7";
-const IMAGE_CACHE_NAME = "smokehouse-images-v7";
-const NOTIFICATION_INTENT_CACHE_NAME = "smokehouse-notification-intent-v1";
+const SHELL_CACHE_NAME = "smokehouse-shell-v8";
+const RUNTIME_CACHE_NAME = "smokehouse-runtime-v8";
+const IMAGE_CACHE_NAME = "smokehouse-images-v8";
+const NOTIFICATION_INTENT_CACHE_NAME = "smokehouse-notification-intent-v2";
 const NOTIFICATION_INTENT_CACHE_KEY = "/__smokehouse-notification-intent__";
-const NOTIFICATION_INTENT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const NOTIFICATION_INTENT_MAX_AGE_MS = 2 * 60 * 1000;
 const CACHE_NAMES = [SHELL_CACHE_NAME, RUNTIME_CACHE_NAME, IMAGE_CACHE_NAME, NOTIFICATION_INTENT_CACHE_NAME];
 const STATIC_NAVIGATION_PATHS = ["/", "/cart", "/offline"];
 const STATIC_ASSET_PATHS = [
@@ -147,6 +147,11 @@ async function consumeNotificationTarget() {
   }
 }
 
+async function clearNotificationTarget() {
+  const cache = await caches.open(NOTIFICATION_INTENT_CACHE_NAME);
+  await cache.delete(getNotificationIntentRequest());
+}
+
 async function handleRootNavigation(request, options) {
   const notificationTarget = await consumeNotificationTarget().catch(() => null);
   if (notificationTarget) {
@@ -236,12 +241,7 @@ self.addEventListener("push", (event) => {
     }
   };
 
-  event.waitUntil(
-    Promise.all([
-      rememberNotificationTarget(targetUrl).catch(() => undefined),
-      self.registration.showNotification(title, options)
-    ])
-  );
+  event.waitUntil(self.registration.showNotification(title, options));
 });
 
 function getNotificationTargetUrl(notificationData) {
@@ -273,6 +273,8 @@ async function navigateAndFocusClient(client, targetUrl) {
   if (targetClient.url !== targetUrl) {
     return undefined;
   }
+
+  await clearNotificationTarget().catch(() => undefined);
 
   if ("focus" in targetClient) {
     try {

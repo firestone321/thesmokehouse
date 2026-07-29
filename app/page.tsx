@@ -2,7 +2,6 @@ import Image from "next/image";
 import { headers } from "next/headers";
 import type { Metadata } from "next";
 import { MenuClient } from "@/components/menu-client";
-import { ReadyOrderRedirect } from "@/components/ready-order-redirect";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { isLocalhostBypassEnabledForHost } from "@/lib/local-bypass";
@@ -59,7 +58,6 @@ export default async function HomePage() {
 
   return (
     <div className="min-h-screen overflow-x-clip bg-cream">
-      <ReadyOrderRedirect />
       <SiteHeader />
       <main>
         <section className="relative min-h-[64vh] overflow-hidden">
