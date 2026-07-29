@@ -115,10 +115,10 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
   }
 
   return (
-    <section id="menu-section" className="mx-auto max-w-7xl px-4 pb-24 pt-5 md:px-8 md:pt-6 lg:pb-10">
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <div>
-          <div className="mb-3 flex gap-2 overflow-auto pb-1">
+    <section id="menu-section" className="mx-auto w-full max-w-7xl min-w-0 px-4 pb-24 pt-5 md:px-8 md:pt-6 lg:pb-10">
+      <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="min-w-0">
+          <div className="mb-3 flex w-full max-w-full gap-2 overflow-x-auto pb-1">
             {availableCategories.map((cat) => {
               const activeCls =
                 active === cat.key

@@ -57,7 +57,7 @@ export default async function HomePage() {
   }
 
   return (
-    <div className="min-h-screen bg-cream">
+    <div className="min-h-screen overflow-x-clip bg-cream">
       <SiteHeader />
       <main>
         <section className="relative min-h-[64vh] overflow-hidden">
