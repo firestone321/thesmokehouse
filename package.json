@@ -8,6 +8,7 @@
     "start": "next start",
     "postinstall": "node scripts/patch-web-push.cjs",
     "lint": "eslint app components lib scripts next.config.js tailwind.config.ts postcss.config.js",
+    "test:payments": "tsx --test tests/pesapal-integrity.test.ts tests/pesapal-sql-contract.test.ts",
     "seed": "tsx scripts/seed.ts"
   },
   "dependencies": {

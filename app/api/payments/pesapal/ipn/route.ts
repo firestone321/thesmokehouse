@@ -2,35 +2,9 @@ import { after, NextResponse } from "next/server";
 import { captureOperationalIncident } from "@/lib/ops/incidents";
 import { logSecurityEvent } from "@/lib/observability/security-events";
 import { scheduleDuePendingPaymentRecovery, syncPesapalPaymentForOrder } from "@/lib/payments/order-payments";
+import { buildPesapalIpnAck, type PesapalNotificationPayload } from "@/lib/payments/pesapal-ipn";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { readJsonWithLimit, readRequestTextWithLimit, RequestBodyTooLargeError } from "@/lib/request-limits";
-
-type PesapalNotificationPayload = {
-  OrderNotificationType?: string | null;
-  OrderTrackingId?: string | null;
-  OrderMerchantReference?: string | null;
-};
-
-function tooManyRequests(retryAfterSeconds: number) {
-  return NextResponse.json(
-    { message: "Too many requests. Please wait and try again." },
-    { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } }
-  );
-}
-
-function buildAck(payload: PesapalNotificationPayload) {
-  const params = new URLSearchParams();
-  if (payload.OrderNotificationType) {
-    params.set("OrderNotificationType", payload.OrderNotificationType);
-  }
-  if (payload.OrderTrackingId) {
-    params.set("OrderTrackingId", payload.OrderTrackingId);
-  }
-  if (payload.OrderMerchantReference) {
-    params.set("OrderMerchantReference", payload.OrderMerchantReference);
-  }
-  return params.toString();
-}
 
 function getProviderBucket(token: string | null | undefined, orderTrackingId: string | null | undefined) {
   const normalizedToken = token?.trim();
@@ -86,7 +60,8 @@ async function syncNotificationPayment(request: Request, payload: PesapalNotific
   try {
     await syncPesapalPaymentForOrder({
       publicToken: token,
-      orderTrackingId
+      orderTrackingId,
+      merchantReference: token
     });
   } catch (error) {
     await captureOperationalIncident({
@@ -117,6 +92,7 @@ async function syncNotificationPayment(request: Request, payload: PesapalNotific
       orderTrackingId,
       error: error instanceof Error ? error.message : "unknown error"
     });
+    throw error;
   }
 }
 
@@ -138,6 +114,12 @@ async function handleNotification(request: Request) {
 
   const token = payload.OrderMerchantReference?.trim();
   const orderTrackingId = payload.OrderTrackingId?.trim();
+  const receivedAt = new Date().toISOString();
+  console.info("pesapal_ipn_received", {
+    receivedAt,
+    notificationType: payload.OrderNotificationType ?? null,
+    orderTrackingId: orderTrackingId ?? null
+  });
   const providerBucket = getProviderBucket(token, orderTrackingId);
   const rateLimit = await enforceRateLimit(request, "payment-ipn", providerBucket ? 180 : 60, 60_000, {
     bucketSuffix: providerBucket
@@ -156,7 +138,13 @@ async function handleNotification(request: Request) {
         thresholds: [10, 25, 50]
       }
     });
-    return tooManyRequests(rateLimit.retryAfterSeconds);
+    return NextResponse.json(
+      buildPesapalIpnAck(payload, 500),
+      {
+        status: 200,
+        headers: { "Retry-After": String(rateLimit.retryAfterSeconds) }
+      }
+    );
   }
 
   if (!token || !orderTrackingId) {
@@ -173,20 +161,31 @@ async function handleNotification(request: Request) {
         thresholds: [3, 10, 25]
       }
     });
-    return NextResponse.json({ message: "Missing notification identifiers." }, { status: 400 });
+    return NextResponse.json(buildPesapalIpnAck(payload, 500), { status: 200 });
   }
 
-  after(async () => {
+  try {
     await syncNotificationPayment(request, payload, token, orderTrackingId);
-    await scheduleDuePendingPaymentRecovery("pesapal_ipn");
-  });
-
-  return new NextResponse(buildAck(payload), {
-    status: 200,
-    headers: {
-      "Content-Type": "text/plain; charset=utf-8"
-    }
-  });
+    console.info("pesapal_ipn_ack_sent", {
+      receivedAt,
+      acknowledgedAt: new Date().toISOString(),
+      orderTrackingId,
+      status: 200
+    });
+    return NextResponse.json(buildPesapalIpnAck(payload, 200), { status: 200 });
+  } catch {
+    console.warn("pesapal_ipn_ack_sent", {
+      receivedAt,
+      acknowledgedAt: new Date().toISOString(),
+      orderTrackingId,
+      status: 500
+    });
+    return NextResponse.json(buildPesapalIpnAck(payload, 500), { status: 200 });
+  } finally {
+    after(async () => {
+      await scheduleDuePendingPaymentRecovery("pesapal_ipn");
+    });
+  }
 }
 
 export async function GET(request: Request) {

@@ -2,11 +2,18 @@ import { randomUUID } from "node:crypto";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { toKampalaDateTimeString } from "@/lib/format";
 import {
+  cancelPesapalOrder,
   getPesapalTransactionStatus,
   isPesapalInitiationRejectedError,
   submitPesapalOrderRequest
 } from "@/lib/payments/pesapal";
-import { triggerAdminPaidOrderPushDispatch } from "@/lib/push/admin-paid-order";
+import {
+  assertCompletedPesapalBinding,
+  assertPesapalTrackingBinding,
+  assertSupabaseWriteSucceeded,
+  normalizePesapalProviderStatus,
+  shouldExhaustInvalidRecovery
+} from "@/lib/payments/pesapal-integrity";
 
 type PaymentStatus = "pending" | "paid" | "failed" | "cancelled";
 type PaymentViewState = "success" | "failed" | "cancelled" | "pending";
@@ -79,12 +86,22 @@ type PendingPaymentRecoveryRow = {
   max_attempts: number;
 };
 
+type PaymentAttemptBindingRow = {
+  id: number;
+  order_id: number;
+  provider: string;
+  provider_reference: string | null;
+  payment_status: string;
+  created_at: string;
+};
+
 const PENDING_PAYMENT_RECOVERY_SOFT_CANCEL_MS = 7 * 60_000;
 const PENDING_PAYMENT_RECOVERY_VERIFY_THROTTLE_MS = 5 * 60_000;
 const PENDING_PAYMENT_RECOVERY_SCAN_LIMIT = 50;
 const PENDING_PAYMENT_RECOVERY_PROCESS_LIMIT = 5;
 const PENDING_PAYMENT_RECOVERY_MAX_BACKOFF_MS = 15 * 60_000;
 const PENDING_PAYMENT_RECOVERY_MIN_BACKOFF_MS = 30_000;
+const PENDING_PAYMENT_RECOVERY_INVALID_MAX_ATTEMPTS = 3;
 
 let pendingPaymentRecoveryPromise: Promise<PendingPaymentRecoveryStats> | null = null;
 
@@ -96,6 +113,7 @@ export type PendingPaymentRecoveryStats = {
   trackedCancelled: number;
   trackedCompleted: number;
   trackedRescheduled: number;
+  trackedFailed: number;
   errors: string[];
 };
 
@@ -264,36 +282,28 @@ function buildSnapshot(row: OrderPaymentRow, options?: { verified?: boolean; hin
   };
 }
 
-async function updateActivePaymentAttempt(order: OrderPaymentRow, input: {
-  lifecycleStatus?: "initiating" | "initiated" | "rejected" | "failed";
-  paymentStatus?: PaymentStatus;
-  providerReference?: string | null;
-  redirectUrl?: string | null;
-  providerStatus?: string | null;
-  providerMessage?: string | null;
-  paymentReference?: string | null;
-  rawResponse?: unknown;
-}) {
+async function getActivePaymentAttempt(order: OrderPaymentRow): Promise<PaymentAttemptBindingRow> {
   if (!order.active_payment_attempt_id) {
-    return;
+    throw new Error("Order does not have an active payment attempt.");
   }
 
-  const payload: Record<string, unknown> = {};
-  if (input.lifecycleStatus !== undefined) payload.lifecycle_status = input.lifecycleStatus;
-  if (input.paymentStatus !== undefined) payload.payment_status = input.paymentStatus;
-  if (input.providerReference !== undefined) payload.provider_reference = input.providerReference;
-  if (input.redirectUrl !== undefined) payload.redirect_url = input.redirectUrl;
-  if (input.providerStatus !== undefined) payload.provider_status = input.providerStatus;
-  if (input.providerMessage !== undefined) payload.provider_message = input.providerMessage;
-  if (input.paymentReference !== undefined) payload.payment_reference = input.paymentReference;
-  if (input.rawResponse !== undefined) payload.raw_response = input.rawResponse;
-  if (input.paymentStatus === "paid") payload.verified_at = new Date().toISOString();
+  const { data, error } = await getSupabaseAdmin()
+    .from("payment_attempts")
+    .select("id,order_id,provider,provider_reference,payment_status,created_at")
+    .eq("id", order.active_payment_attempt_id)
+    .eq("order_id", order.id)
+    .eq("provider", "pesapal")
+    .maybeSingle();
 
-  if (Object.keys(payload).length === 0) {
-    return;
+  if (error) {
+    throw new Error(`Unable to load the active payment attempt: ${error.message}`);
   }
 
-  await getSupabaseAdmin().from("payment_attempts").update(payload).eq("id", order.active_payment_attempt_id);
+  if (!data) {
+    throw new Error("The active Pesapal payment attempt was not found.");
+  }
+
+  return data as PaymentAttemptBindingRow;
 }
 
 function buildPaymentRecoveryWorkerId(trigger: string) {
@@ -573,126 +583,82 @@ export async function cancelRejectedOrderPaymentInitiation(input: {
     return null;
   }
 
-  await updateActivePaymentAttempt(row, {
-    lifecycleStatus: "rejected",
-    paymentStatus: "cancelled",
-    providerMessage: input.reasonMessage
+  const { data, error } = await getSupabaseAdmin().rpc("reject_storefront_payment_initiation", {
+    p_public_token: input.publicToken,
+    p_payment_attempt_id: row.active_payment_attempt_id,
+    p_reason_code: input.reasonCode?.trim() || null,
+    p_reason_message: input.reasonMessage.trim()
   });
-
-  const { data, error } = await getSupabaseAdmin()
-    .from("orders")
-    .update({
-      status: "cancelled",
-      payment_status: "cancelled",
-      payment_provider: "pesapal",
-      payment_initiation_failure_code: input.reasonCode?.trim() || null,
-      payment_initiation_failure_message: input.reasonMessage.trim(),
-      payment_initiation_failed_at: new Date().toISOString()
-    })
-    .eq("id", row.id)
-    .eq("status", "new")
-    .is("order_tracking_id", null)
-    .is("payment_redirect_url", null)
-    .is("stock_reserved_at", null)
-    .not("payment_status", "in", "(paid,completed,cancelled,canceled)")
-    .select(
-      `
-      id,
-      order_number,
-      public_token,
-      created_at,
-      updated_at,
-      pickup_code,
-      customer_name,
-      customer_phone,
-      status,
-      payment_status,
-      total_amount,
-      promised_at,
-      payment_provider,
-      payment_reference,
-      payment_redirect_url,
-      order_tracking_id,
-      payment_last_verified_at,
-      paid_at,
-      payment_initiation_failure_code,
-      payment_initiation_failure_message,
-      payment_initiation_failed_at,
-      active_payment_attempt_id,
-      stock_reserved_at,
-      order_items (
-        id,
-        menu_item_id,
-        menu_item_name,
-        quantity,
-        unit_price
-      )
-    `
-    )
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(`Unable to cancel rejected payment initiation: ${error.message}`);
-  }
+  assertSupabaseWriteSucceeded(error, "Unable to cancel rejected payment initiation");
 
   if (!data) {
     return null;
   }
 
-  return buildSnapshot(data as OrderPaymentRow, { hint: "cancelled" });
+  const refreshed = await getOrderPaymentRow(input.publicToken);
+  return refreshed ? buildSnapshot(refreshed, { hint: "cancelled" }) : null;
 }
 
-export async function markOrderPaymentCancelled(publicToken: string) {
-  const row = await getOrderPaymentRow(publicToken);
-  if (!row) {
-    throw new Error("Order not found.");
-  }
-
-  if (normalizeStoredPaymentStatus(row.payment_status) === "paid") {
-    return buildSnapshot(row, { verified: true });
-  }
-
-  await updateActivePaymentAttempt(row, {
-    paymentStatus: "cancelled",
-    lifecycleStatus: "failed"
+async function applyPesapalVerification(input: {
+  row: OrderPaymentRow;
+  attempt: PaymentAttemptBindingRow;
+  trackingId: string;
+  providerStatus: string;
+  providerTrackingId: string | null;
+  merchantReference: string | null;
+  amount: string | number | null;
+  currency: string | null;
+  paymentReference: string | null;
+  rawResponse: unknown;
+  cancellationConfirmed?: boolean;
+}) {
+  const { error } = await getSupabaseAdmin().rpc("apply_pesapal_payment_verification", {
+    p_order_id: input.row.id,
+    p_payment_attempt_id: input.attempt.id,
+    p_supplied_tracking_id: input.trackingId,
+    p_provider_tracking_id: input.providerTrackingId,
+    p_merchant_reference: input.merchantReference,
+    p_provider_amount: input.amount,
+    p_provider_currency: input.currency,
+    p_provider_status: input.providerStatus,
+    p_payment_reference: input.paymentReference,
+    p_raw_response: input.rawResponse,
+    p_cancellation_confirmed: input.cancellationConfirmed ?? false
   });
 
-  const { error } = await getSupabaseAdmin()
-    .from("orders")
-    .update({
-      status: row.stock_reserved_at ? row.status : "cancelled",
-      payment_status: "cancelled",
-      payment_last_verified_at: new Date().toISOString()
-    })
-    .eq("id", row.id);
-
-  if (error) {
-    throw new Error(`Unable to cancel payment: ${error.message}`);
-  }
-
-  const refreshed = await getOrderPaymentRow(publicToken);
-  if (!refreshed) {
-    throw new Error("Order not found.");
-  }
-
-  return buildSnapshot(refreshed, { hint: "cancelled" });
+  assertSupabaseWriteSucceeded(error, "Unable to persist the Pesapal payment verification");
 }
 
 async function verifyPesapalPaymentForOrder(input: {
   publicToken: string;
   orderTrackingId?: string | null;
+  merchantReference?: string | null;
 }) {
   const row = await getOrderPaymentRow(input.publicToken);
   if (!row) {
     throw new Error("Order not found.");
   }
 
+  if (input.merchantReference && input.merchantReference !== row.public_token) {
+    throw new Error("The supplied merchant reference does not match the order.");
+  }
+
+  const attempt = await getActivePaymentAttempt(row);
   const trackingId = input.orderTrackingId ?? row.order_tracking_id;
   if (!trackingId) {
     return {
       snapshot: buildSnapshot(row),
-      providerPaymentStatus: null as PaymentStatus | null
+      providerPaymentStatus: null as PaymentStatus | null,
+      providerStatus: null,
+      attempt
     };
+  }
+
+  if (
+    row.order_tracking_id !== trackingId
+    || attempt.provider_reference !== trackingId
+  ) {
+    throw new Error("The supplied Pesapal tracking ID does not match the active payment attempt.");
   }
 
   await enqueuePendingPaymentRecoverySafely({
@@ -702,56 +668,39 @@ async function verifyPesapalPaymentForOrder(input: {
   });
 
   const status = await getPesapalTransactionStatus(trackingId);
-  const storedPaymentStatus = normalizeStoredPaymentStatus(row.payment_status);
-  const nextNonPaidPaymentStatus =
-    storedPaymentStatus === "cancelled" ? "cancelled" : status.paymentStatus;
+  const binding = {
+    publicToken: row.public_token,
+    expectedAmountUGX: row.total_amount,
+    orderTrackingId: row.order_tracking_id,
+    attemptTrackingId: attempt.provider_reference
+  };
+  const verified = {
+    suppliedTrackingId: trackingId,
+    providerTrackingId: status.providerOrderTrackingId,
+    merchantReference: status.merchantReference,
+    amount: status.amount,
+    currency: status.currency,
+    providerStatus: status.providerStatus
+  };
 
   if (status.paymentStatus === "paid") {
-    const { error } = await getSupabaseAdmin().rpc("mark_order_as_paid", {
-      p_order_id: row.id,
-      p_payment_provider: "pesapal",
-      p_order_tracking_id: trackingId,
-      p_payment_reference: status.paymentReference,
-      p_payment_redirect_url: row.payment_redirect_url,
-      p_note: "Payment verified through Pesapal."
-    });
-
-    if (error) {
-      throw new Error(`Unable to mark order as paid: ${error.message}`);
-    }
-
-    if (storedPaymentStatus !== "paid") {
-      await triggerAdminPaidOrderPushDispatch(row.id).catch((error) => {
-        console.error("admin_paid_order_push_dispatch_failed", {
-          orderId: row.id,
-          error: error instanceof Error ? error.message : "unknown_error"
-        });
-      });
-    }
+    assertCompletedPesapalBinding(binding, verified);
   } else {
-    const { error } = await getSupabaseAdmin()
-      .from("orders")
-      .update({
-        payment_status: nextNonPaidPaymentStatus,
-        payment_provider: "pesapal",
-        order_tracking_id: trackingId,
-        payment_reference: status.paymentReference,
-        payment_last_verified_at: new Date().toISOString()
-      })
-      .eq("id", row.id);
-
-    if (error) {
-      throw new Error(`Unable to persist payment verification: ${error.message}`);
-    }
+    assertPesapalTrackingBinding(binding, verified);
   }
 
-  await updateActivePaymentAttempt(row, {
-    paymentStatus: status.paymentStatus === "paid" ? "paid" : nextNonPaidPaymentStatus,
-    lifecycleStatus: status.paymentStatus === "failed" ? "failed" : "initiated",
-    providerReference: trackingId,
-    providerStatus: status.providerStatus,
+  await applyPesapalVerification({
+    row,
+    attempt,
+    trackingId,
+    providerStatus: normalizePesapalProviderStatus(status.providerStatus),
+    providerTrackingId: status.providerOrderTrackingId,
+    merchantReference: status.merchantReference,
+    amount: status.amount,
+    currency: status.currency,
     paymentReference: status.paymentReference,
-    rawResponse: status.rawResponse
+    rawResponse: status.rawResponse,
+    cancellationConfirmed: normalizePesapalProviderStatus(status.providerStatus) === "CANCELLED"
   });
 
   const refreshed = await getOrderPaymentRow(input.publicToken);
@@ -760,22 +709,91 @@ async function verifyPesapalPaymentForOrder(input: {
   }
 
   const snapshot = buildSnapshot(refreshed, { verified: normalizeStoredPaymentStatus(refreshed.payment_status) === "paid" });
-  if (status.paymentStatus === "paid" || status.paymentStatus === "failed") {
+  if (
+    status.paymentStatus === "paid"
+    || status.paymentStatus === "failed"
+    || normalizeStoredPaymentStatus(refreshed.payment_status) === "cancelled"
+  ) {
     await completePendingPaymentRecoveryByTracking(trackingId);
   }
 
   return {
     snapshot,
-    providerPaymentStatus: status.paymentStatus
+    providerPaymentStatus: status.paymentStatus,
+    providerStatus: normalizePesapalProviderStatus(status.providerStatus),
+    attempt
   };
 }
 
 export async function syncPesapalPaymentForOrder(input: {
   publicToken: string;
   orderTrackingId?: string | null;
+  merchantReference?: string | null;
 }) {
   const result = await verifyPesapalPaymentForOrder(input);
   return result.snapshot;
+}
+
+export async function markOrderPaymentCancelled(input: {
+  publicToken: string;
+  orderTrackingId: string;
+  merchantReference?: string | null;
+}) {
+  const verification = await verifyPesapalPaymentForOrder({
+    publicToken: input.publicToken,
+    orderTrackingId: input.orderTrackingId,
+    merchantReference: input.merchantReference ?? input.publicToken
+  });
+
+  if (
+    verification.snapshot.paymentStatus === "paid"
+    || verification.snapshot.paymentStatus === "cancelled"
+  ) {
+    return verification.snapshot;
+  }
+
+  try {
+    const cancellation = await cancelPesapalOrder(input.orderTrackingId);
+    const row = await getOrderPaymentRow(input.publicToken);
+    if (!row) {
+      throw new Error("Order not found.");
+    }
+    const attempt = await getActivePaymentAttempt(row);
+
+    await applyPesapalVerification({
+      row,
+      attempt,
+      trackingId: input.orderTrackingId,
+      providerStatus: "CANCELLED",
+      providerTrackingId: input.orderTrackingId,
+      merchantReference: input.merchantReference ?? input.publicToken,
+      amount: null,
+      currency: null,
+      paymentReference: null,
+      rawResponse: cancellation,
+      cancellationConfirmed: true
+    });
+  } catch (cancellationError) {
+    const racedVerification = await verifyPesapalPaymentForOrder({
+      publicToken: input.publicToken,
+      orderTrackingId: input.orderTrackingId,
+      merchantReference: input.merchantReference ?? input.publicToken
+    });
+
+    if (racedVerification.snapshot.paymentStatus === "paid") {
+      return racedVerification.snapshot;
+    }
+
+    throw cancellationError;
+  }
+
+  const refreshed = await getOrderPaymentRow(input.publicToken);
+  if (!refreshed) {
+    throw new Error("Order not found.");
+  }
+
+  await completePendingPaymentRecoveryByTracking(input.orderTrackingId);
+  return buildSnapshot(refreshed, { hint: "cancelled" });
 }
 
 function isOlderThan(isoDate: string | null | undefined, thresholdMs: number, nowMs: number) {
@@ -791,43 +809,32 @@ function isOlderThan(isoDate: string | null | undefined, thresholdMs: number, no
   return nowMs - valueMs >= thresholdMs;
 }
 
-function isTrackedPendingPaymentExpired(row: OrderPaymentRow, nowMs: number) {
-  return isOlderThan(row.created_at, PENDING_PAYMENT_RECOVERY_SOFT_CANCEL_MS, nowMs);
+function isTrackedPendingPaymentExpired(attempt: PaymentAttemptBindingRow, nowMs: number) {
+  return isOlderThan(attempt.created_at, PENDING_PAYMENT_RECOVERY_SOFT_CANCEL_MS, nowMs);
 }
 
-async function cancelExpiredPendingPayment(row: OrderPaymentRow, reasonMessage: string) {
-  await updateActivePaymentAttempt(row, {
-    lifecycleStatus: "failed",
-    paymentStatus: "cancelled",
-    providerMessage: reasonMessage
-  });
-
-  const now = new Date().toISOString();
+async function failPendingPaymentRecovery(row: PendingPaymentRecoveryRow, message: string) {
   const { error } = await getSupabaseAdmin()
-    .from("orders")
+    .from("pending_payment_recoveries")
     .update({
-      status: "cancelled",
-      payment_status: "cancelled",
-      payment_provider: "pesapal",
-      payment_last_verified_at: now,
-      payment_initiation_failure_code: "pending_payment_timeout",
-      payment_initiation_failure_message: reasonMessage,
-      payment_initiation_failed_at: now
+      status: "failed",
+      next_attempt_at: new Date().toISOString(),
+      last_verified_at: new Date().toISOString(),
+      locked_at: null,
+      locked_by: null,
+      last_error: message
     })
-    .eq("id", row.id)
-    .eq("status", "new")
-    .eq("payment_status", "pending")
-    .is("stock_reserved_at", null);
+    .eq("id", row.id);
 
   if (error) {
-    throw new Error(`Unable to cancel stale pending payment: ${error.message}`);
+    throw new Error(`Unable to fail pending payment recovery: ${error.message}`);
   }
 }
 
 async function processClaimedPendingPaymentRecovery(
   row: PendingPaymentRecoveryRow,
   nowMs: number
-): Promise<"completed" | "rescheduled" | "cancelled"> {
+): Promise<"completed" | "rescheduled" | "cancelled" | "failed"> {
   const order = await getOrderPaymentRowById(row.order_id);
   if (!order) {
     await reschedulePendingPaymentRecovery(row, "Order no longer exists for pending payment recovery.");
@@ -848,7 +855,8 @@ async function processClaimedPendingPaymentRecovery(
 
   const verification = await verifyPesapalPaymentForOrder({
     publicToken: order.public_token,
-    orderTrackingId
+    orderTrackingId,
+    merchantReference: order.public_token
   });
 
   const refreshed = await getOrderPaymentRowById(order.id);
@@ -865,20 +873,55 @@ async function processClaimedPendingPaymentRecovery(
   }
 
   if (
+    verification.providerStatus === "INVALID"
+    && shouldExhaustInvalidRecovery(
+      row.attempt_count,
+      PENDING_PAYMENT_RECOVERY_INVALID_MAX_ATTEMPTS
+    )
+  ) {
+    try {
+      const cancelled = await markOrderPaymentCancelled({
+        publicToken: order.public_token,
+        orderTrackingId,
+        merchantReference: order.public_token
+      });
+      if (cancelled.paymentStatus === "paid") {
+        await completePendingPaymentRecovery(row.id);
+        return "completed";
+      }
+
+      await completePendingPaymentRecovery(row.id);
+      return "cancelled";
+    } catch (error) {
+      await failPendingPaymentRecovery(
+        row,
+        `Pesapal remained INVALID after ${row.attempt_count} recovery attempts: ${
+          error instanceof Error ? error.message : "provider cancellation failed"
+        }`
+      );
+      return "failed";
+    }
+  }
+
+  if (
     refreshed &&
     refreshed.status === "new" &&
     refreshedPaymentStatus === "pending" &&
     refreshed.order_tracking_id &&
-    isTrackedPendingPaymentExpired(refreshed, nowMs)
+    isTrackedPendingPaymentExpired(verification.attempt, nowMs)
   ) {
-    await cancelExpiredPendingPayment(
-      refreshed,
-      "Payment was not completed before the pending checkout window expired."
-    );
-    await reschedulePendingPaymentRecovery(
-      row,
-      "Provider still reports pending after local soft-cancel; keeping recovery active for late paid truth."
-    );
+    const cancelled = await markOrderPaymentCancelled({
+      publicToken: refreshed.public_token,
+      orderTrackingId,
+      merchantReference: refreshed.public_token
+    });
+
+    if (cancelled.paymentStatus === "paid") {
+      await completePendingPaymentRecovery(row.id);
+      return "completed";
+    }
+
+    await completePendingPaymentRecovery(row.id);
     return "cancelled";
   }
 
@@ -899,6 +942,7 @@ export async function reconcileDuePendingPayments(
     trackedCancelled: 0,
     trackedCompleted: 0,
     trackedRescheduled: 0,
+    trackedFailed: 0,
     errors: []
   };
 
@@ -916,11 +960,12 @@ export async function reconcileDuePendingPayments(
         stats.trackedVerified += 1;
         if (result === "completed") {
           stats.trackedCompleted += 1;
+        } else if (result === "failed") {
+          stats.trackedFailed += 1;
+        } else if (result === "cancelled") {
+          stats.trackedCancelled += 1;
         } else {
           stats.trackedRescheduled += 1;
-          if (result === "cancelled") {
-            stats.trackedCancelled += 1;
-          }
         }
       } catch (error) {
         await reschedulePendingPaymentRecovery(

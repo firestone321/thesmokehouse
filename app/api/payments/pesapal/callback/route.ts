@@ -23,6 +23,13 @@ export async function GET(request: Request) {
     requestUrl.searchParams.get("OrderMerchantReference")?.trim();
   const orderTrackingId = requestUrl.searchParams.get("OrderTrackingId")?.trim();
   const cancelled = requestUrl.searchParams.get("cancelled") === "1";
+  const receivedAt = new Date().toISOString();
+  let cancellationConfirmed = false;
+  console.info("pesapal_callback_received", {
+    receivedAt,
+    orderTrackingId: orderTrackingId ?? null,
+    cancellationRequested: cancelled
+  });
   const providerBucket =
     token || orderTrackingId
       ? `pesapal-callback:${token ?? "missing-token"}:${orderTrackingId ?? "missing-tracking"}:${cancelled ? "cancelled" : "sync"}`
@@ -50,24 +57,38 @@ export async function GET(request: Request) {
   if (token) {
     try {
       if (cancelled) {
-        await markOrderPaymentCancelled(token);
+        if (!orderTrackingId) {
+          throw new Error("A Pesapal tracking ID is required before cancellation can be verified.");
+        }
+
+        const snapshot = await markOrderPaymentCancelled({
+          publicToken: token,
+          orderTrackingId,
+          merchantReference: token
+        });
+        cancellationConfirmed = snapshot.paymentStatus === "cancelled";
       } else if (orderTrackingId) {
         await syncPesapalPaymentForOrder({
           publicToken: token,
-          orderTrackingId
+          orderTrackingId,
+          merchantReference: token
         });
       }
     } catch (error) {
-      if (!cancelled && orderTrackingId) {
+      if (orderTrackingId) {
         await captureOperationalIncident({
           type: "payment_callback_sync_failed",
           severity: "critical",
           source: "pesapal_callback",
-          message: "Pesapal callback payment sync failed.",
+          message: cancelled
+            ? "Pesapal callback cancellation verification failed."
+            : "Pesapal callback payment sync failed.",
           dedupeKey: `payment_callback_sync_failed:${token}:${orderTrackingId}`,
           context: {
             publicToken: token,
             orderTrackingId,
+            cancelled,
+            receivedAt,
             error: error instanceof Error ? error.message : "unknown_error"
           }
         });
@@ -78,6 +99,8 @@ export async function GET(request: Request) {
           details: {
             publicToken: token,
             orderTrackingId,
+            cancelled,
+            receivedAt,
             error: error instanceof Error ? error.message : "unknown error"
           }
         });
@@ -86,6 +109,8 @@ export async function GET(request: Request) {
       console.error("pesapal_callback_sync_failed", {
         token,
         orderTrackingId: orderTrackingId ?? null,
+        cancelled,
+        receivedAt,
         error: error instanceof Error ? error.message : "unknown error"
       });
     }
@@ -111,12 +136,20 @@ export async function GET(request: Request) {
   if (token) {
     resultUrl.searchParams.set("token", token);
   }
-  if (cancelled) {
+  if (cancellationConfirmed) {
     resultUrl.searchParams.set("hint", "cancelled");
   }
 
   after(async () => {
     await scheduleDuePendingPaymentRecovery("pesapal_callback");
+  });
+
+  console.info("pesapal_callback_redirecting", {
+    receivedAt,
+    redirectingAt: new Date().toISOString(),
+    orderTrackingId: orderTrackingId ?? null,
+    cancellationRequested: cancelled,
+    cancellationConfirmed
   });
 
   return NextResponse.redirect(resultUrl);

@@ -35,13 +35,26 @@ export type PesapalSubmitOrderResponse = {
   } | null;
 };
 
-type PesapalTransactionStatusResponse = {
+export type PesapalTransactionStatusResponse = {
   payment_status_description?: string | null;
   confirmation_code?: string | null;
-  order_tracking_id?: string | null;
   merchant_reference?: string | null;
   amount?: string | number | null;
+  currency?: string | null;
   payment_method?: string | null;
+  status_code?: string | number | null;
+  created_date?: string | null;
+  message?: string | null;
+  error?: {
+    code?: string | null;
+    message?: string | null;
+    type?: string | null;
+  } | null;
+};
+
+type PesapalCancelOrderResponse = {
+  status?: string | number | null;
+  message?: string | null;
 };
 
 type TokenCache = {
@@ -374,7 +387,8 @@ export async function getPesapalTransactionStatus(orderTrackingId: string) {
     headers: {
       Accept: "application/json",
       Authorization: `Bearer ${await getPesapalAuthToken()}`
-    }
+    },
+    cache: "no-store"
   });
 
   const rawText = await response.text();
@@ -386,9 +400,34 @@ export async function getPesapalTransactionStatus(orderTrackingId: string) {
 
   return {
     providerReference: orderTrackingId,
+    // API 3.0 does not echo this value in GetTransactionStatus. This is the
+    // provider-supplied callback/IPN ID used for the authenticated query.
+    providerOrderTrackingId: orderTrackingId,
+    merchantReference: payload.merchant_reference?.trim() || null,
+    amount: payload.amount ?? null,
+    currency: payload.currency?.trim() || null,
     paymentStatus: normalizePesapalPaymentState(payload.payment_status_description),
     providerStatus: payload.payment_status_description ?? null,
     paymentReference: payload.confirmation_code ?? null,
     rawResponse: payload
   };
+}
+
+export async function cancelPesapalOrder(orderTrackingId: string) {
+  const response = await pesapalRequest<PesapalCancelOrderResponse>(
+    "/api/Transactions/CancelOrder",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        order_tracking_id: orderTrackingId
+      })
+    },
+    { authenticated: true }
+  );
+
+  if (String(response.status ?? "").trim() !== "200") {
+    throw new Error(response.message ?? "Pesapal did not confirm order cancellation.");
+  }
+
+  return response;
 }
