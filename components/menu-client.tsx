@@ -9,6 +9,8 @@ import { useCartStore } from "@/lib/store";
 import { useCartHydration } from "@/lib/use-cart-hydration";
 import { STOREFRONT_LOW_STOCK_COUNT_THRESHOLD } from "@/lib/stock-thresholds";
 
+const storefrontCategoryOrder = ["country_platter", "beef", "goat", "chicken", "sides"];
+
 export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
   const [active, setActive] = useState<string>("");
   const [pickupTime, setPickupTime] = useState("15");
@@ -50,18 +52,25 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
   );
   const accompanimentList = useMemo(() => accompanimentItems, [accompanimentItems]);
 
-  const availableCategories = useMemo(
-    () =>
-      Array.from(
+  const availableCategories = useMemo(() => {
+    const getCategoryRank = (category: { key: string; label: string }) => {
+      const normalizedKey = category.key.toLowerCase().replace(/[-\s]/g, "_");
+      const normalizedLabel = category.label.toLowerCase().replace(/[-\s]/g, "_");
+      const rank = storefrontCategoryOrder.findIndex((value) => value === normalizedKey || value === normalizedLabel);
+      return rank === -1 ? storefrontCategoryOrder.length : rank;
+    };
+
+    return Array.from(
         storefrontItems.reduce((categoryMap, item) => {
           if (!categoryMap.has(item.category)) {
             categoryMap.set(item.category, { key: item.category, label: item.category_label });
           }
           return categoryMap;
         }, new Map<string, { key: string; label: string }>())
-      ).map(([, category]) => category),
-    [storefrontItems]
-  );
+      )
+      .map(([, category]) => category)
+      .sort((left, right) => getCategoryRank(left) - getCategoryRank(right));
+  }, [storefrontItems]);
 
   useEffect(() => {
     if (availableCategories.length === 0) return;
