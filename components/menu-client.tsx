@@ -190,7 +190,8 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
 
                   <div className="px-3 pb-2 pt-3">
                     <h3 className="text-base font-extrabold text-[#1f1a17]">{item.name}</h3>
-                    <p className="mt-1 min-h-10 text-sm font-medium text-[#4f4138]">
+                    <div className="mt-2 h-px w-full bg-[#eadbc9]" />
+                    <p className="mt-2 min-h-10 text-sm font-medium text-[#4f4138]">
                       {item.description ?? "House-smoked and finished fresh to order."}
                     </p>
                     {stockMessage ? (
