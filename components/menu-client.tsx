@@ -149,6 +149,7 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {filtered.map((item) => {
               const isOutOfStock = !item.is_available;
+              const isCountryPlatter = item.category === "country_platter";
               const cartItem = safeCartItems.find((cartLine) => cartLine.menu_item_id === item.id);
               const selectedAddonIds = (cartItem?.accompaniments ?? []).map((a) => a.menu_item_id);
               const pendingSubtotal =
@@ -194,7 +195,75 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
                     <p className="mt-2 min-h-10 text-sm font-medium text-[#4f4138]">
                       {item.description ?? "House-smoked and finished fresh to order."}
                     </p>
-                    {stockMessage ? (
+                    {isCountryPlatter ? (
+                      <>
+                        <p className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[#dbc6ab] bg-[#f5eadb] px-2.5 py-1 text-[11px] font-bold text-[#5d4634] shadow-[0_1px_2px_rgba(75,53,35,0.08)]">
+                          <span aria-hidden="true">👥</span>
+                          Feeds up to 4 people
+                        </p>
+
+                        <section className="mt-4 border-t border-[#e4d0b9] pt-4" aria-labelledby={`country-platter-contents-${item.id}`}>
+                          <h4
+                            id={`country-platter-contents-${item.id}`}
+                            className="text-xs font-black uppercase tracking-[0.16em] text-[#6a4d38]"
+                          >
+                            What&apos;s Included
+                          </h4>
+
+                          <div className="mt-3 space-y-4">
+                            <div>
+                              <h5 className="text-[11px] font-extrabold uppercase tracking-wide text-[#80624a]">Smoked Meats</h5>
+                              <dl className="mt-2 space-y-1.5 text-xs font-medium text-[#4f4138]">
+                                {[
+                                  ["Beef ribs", "400g"],
+                                  ["Beef chunks", "300g"],
+                                  ["Beef oxtail", "300g"],
+                                  ["Goat ribs", "350g"],
+                                  ["Goat chops", "300g"],
+                                  ["Smoked chicken", "Half bird"]
+                                ].map(([name, amount]) => (
+                                  <div key={name} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4">
+                                    <dt>{name}</dt>
+                                    <dd className="font-bold tabular-nums text-[#6a4d38]">{amount}</dd>
+                                  </div>
+                                ))}
+                              </dl>
+                            </div>
+
+                            <div>
+                              <h5 className="text-[11px] font-extrabold uppercase tracking-wide text-[#80624a]">Sides</h5>
+                              <dl className="mt-2 space-y-1.5 text-xs font-medium text-[#4f4138]">
+                                {[
+                                  ["Gonja", "600g"],
+                                  ["Fries", "600g"],
+                                  ["Fresh salad", "450g"]
+                                ].map(([name, amount]) => (
+                                  <div key={name} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4">
+                                    <dt>{name}</dt>
+                                    <dd className="font-bold tabular-nums text-[#6a4d38]">{amount}</dd>
+                                  </div>
+                                ))}
+                              </dl>
+                            </div>
+
+                            <div>
+                              <h5 className="text-[11px] font-extrabold uppercase tracking-wide text-[#80624a]">Extras</h5>
+                              <dl className="mt-2 space-y-1.5 text-xs font-medium text-[#4f4138]">
+                                <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4">
+                                  <dt>Signature sauces</dt>
+                                  <dd className="font-bold text-[#6a4d38]">100ml each</dd>
+                                </div>
+                                <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4">
+                                  <dt>One 2-litre soda</dt>
+                                </div>
+                              </dl>
+                            </div>
+                          </div>
+                        </section>
+                      </>
+                    ) : null}
+
+                    {stockMessage && !isCountryPlatter ? (
                       <p
                         className={`mt-2 text-xs font-bold uppercase tracking-wide ${isOutOfStock ? "text-[#8d3d2f]" : "text-[#9a5a1d]"}`}
                       >
@@ -202,7 +271,7 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
                       </p>
                     ) : null}
 
-                    {item.category !== "sides" && accompanimentList.length > 0 ? (
+                    {!isCountryPlatter && item.category !== "sides" && accompanimentList.length > 0 ? (
                       <div className="mt-3 border-t border-[#e4d0b9] pt-3">
                         <p className="text-xs font-black uppercase tracking-wide text-[#6a4d38]">
                           Add Accompaniments
@@ -247,7 +316,7 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
                       </div>
                     ) : null}
 
-                    {drinkItems.length > 0 ? (
+                    {!isCountryPlatter && drinkItems.length > 0 ? (
                       <div className="mt-3 border-t border-[#e4d0b9] pt-3">
                         <p className="text-xs font-black uppercase tracking-wide text-[#6a4d38]">Add drinks</p>
                         <div className="mt-2 space-y-2">
