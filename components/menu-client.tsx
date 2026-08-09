@@ -182,15 +182,17 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
                     <span className="absolute left-2 top-2 rounded bg-ember px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-white">
                       {item.category_label}
                     </span>
-                    {item.portion_label ? (
-                      <span className="absolute right-2 top-2 rounded border border-white/25 bg-[#1f1a17]/80 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-[#fff7ec] backdrop-blur-sm">
-                        {item.portion_label.replace(/G$/, "g")}
-                      </span>
-                    ) : null}
                   </div>
 
                   <div className="px-3 pb-2 pt-3">
-                    <h3 className="text-base font-extrabold text-[#1f1a17]">{item.name}</h3>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-base font-extrabold text-[#1f1a17]">{item.name}</h3>
+                      {item.portion_label ? (
+                        <span className="inline-flex items-center rounded-full border border-[#dbc6ab] bg-[#f5eadb] px-2.5 py-1 text-[11px] font-bold text-[#5d4634] shadow-[0_1px_2px_rgba(75,53,35,0.08)]">
+                          {item.portion_label.replace(/G$/, "g")}
+                        </span>
+                      ) : null}
+                    </div>
                     <div className="mt-2 h-px w-full bg-[#eadbc9]" />
                     <p className="mt-2 min-h-10 text-sm font-medium text-[#4f4138]">
                       {item.description ?? "House-smoked and finished fresh to order."}
