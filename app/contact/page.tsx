@@ -9,7 +9,9 @@ export const metadata: Metadata = {
 };
 
 const whatsappNumber = "256700000000";
-const phoneNumberDisplay = "+256 700 000 000";
+const whatsappNumberDisplay = "+256 700 000 000";
+const phoneNumber = "0393002970";
+const phoneNumberDisplay = "0393002970";
 const locationLabel = "JRVV+53 Kikandwa";
 const googleMapsPlaceUrl =
   "https://www.google.com/maps/place/Firestone+Country+Smokehouse/@0.6429121,32.8400932,1131m/data=!3m2!1e3!4b1!4m6!3m5!1s0x177c3be9438e5e7d:0x93076eb88a9658ab!8m2!3d0.6429121!4d32.8426681!16s%2Fg%2F11zgk3bnv7?entry=ttu&g_ep=EgoyMDI2MDcwOC4wIKXMDSoASAFQAw%3D%3D";
@@ -56,12 +58,12 @@ export default function ContactPage() {
                   className="rounded-2xl border border-[#D5C6B9] bg-[#FFF8EF] p-4 shadow-[0_12px_30px_rgba(42,33,26,0.08)] transition hover:border-[#A66B55]"
                 >
                   <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8A6246]">WhatsApp</p>
-                  <p className="mt-2 text-lg font-black text-[#30241F]">{phoneNumberDisplay}</p>
+                  <p className="mt-2 text-lg font-black text-[#30241F]">{whatsappNumberDisplay}</p>
                   <p className="mt-2 text-sm font-semibold leading-6 text-[#6A5647]">Tap to open a placeholder WhatsApp chat.</p>
                 </a>
 
                 <a
-                  href={`tel:${whatsappNumber}`}
+                  href={`tel:${phoneNumber}`}
                   className="rounded-2xl border border-[#D5C6B9] bg-[#FFF8EF] p-4 shadow-[0_12px_30px_rgba(42,33,26,0.08)] transition hover:border-[#A66B55]"
                 >
                   <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8A6246]">Phone</p>
