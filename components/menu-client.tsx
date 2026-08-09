@@ -235,14 +235,9 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
                             <div>
                               <h5 className="text-[11px] font-extrabold uppercase tracking-wide text-[#80624a]">Sides</h5>
                               <dl className="mt-2 space-y-1.5 text-xs font-medium text-[#4f4138]">
-                                {[
-                                  ["Gonja", "600g"],
-                                  ["Fries", "600g"],
-                                  ["Fresh salad", "450g"]
-                                ].map(([name, amount]) => (
-                                  <div key={name} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4">
+                                {["Gonja", "Fries", "Fresh salad"].map((name) => (
+                                  <div key={name}>
                                     <dt>{name}</dt>
-                                    <dd className="font-bold tabular-nums text-[#6a4d38]">{amount}</dd>
                                   </div>
                                 ))}
                               </dl>
