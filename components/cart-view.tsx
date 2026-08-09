@@ -37,6 +37,7 @@ export function CartView({ showCheckout = true }: { showCheckout?: boolean }) {
             <p>1. Build your order from live stock.</p>
             <p>2. Pay with Pesapal.</p>
             <p>3. Show your pickup code when the kitchen marks it ready.</p>
+            <p>4. Or simply walk in and pay with cash.</p>
           </div>
         </div>
       </section>
