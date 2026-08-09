@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 const whatsappNumber = "256700000000";
 const whatsappNumberDisplay = "+256 700 000 000";
 const phoneNumber = "0393002970";
-const phoneNumberDisplay = "0393002970";
+const phoneNumberDisplay = "0393 002 970";
 const locationLabel = "JRVV+53 Kikandwa";
 const googleMapsPlaceUrl =
   "https://www.google.com/maps/place/Firestone+Country+Smokehouse/@0.6429121,32.8400932,1131m/data=!3m2!1e3!4b1!4m6!3m5!1s0x177c3be9438e5e7d:0x93076eb88a9658ab!8m2!3d0.6429121!4d32.8426681!16s%2Fg%2F11zgk3bnv7?entry=ttu&g_ep=EgoyMDI2MDcwOC4wIKXMDSoASAFQAw%3D%3D";
@@ -46,8 +46,7 @@ export default function ContactPage() {
               <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#A66B55]">Smokehouse contact</p>
               <h2 className="mt-3 font-heading text-4xl leading-none tracking-normal text-[#30241F] md:text-5xl">We’re here to help</h2>
               <p className="mt-4 max-w-2xl text-sm font-semibold leading-7 text-[#5F5D58]">
-                This page is set up for the full contact experience. For now, the phone number and WhatsApp link are placeholders
-                until the final line is confirmed.
+                Reach out by phone or WhatsApp for orders, directions, and pickup help.
               </p>
 
               <div className="mt-6 grid gap-4 sm:grid-cols-2">
@@ -59,7 +58,6 @@ export default function ContactPage() {
                 >
                   <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8A6246]">WhatsApp</p>
                   <p className="mt-2 text-lg font-black text-[#30241F]">{whatsappNumberDisplay}</p>
-                  <p className="mt-2 text-sm font-semibold leading-6 text-[#6A5647]">Tap to open a placeholder WhatsApp chat.</p>
                 </a>
 
                 <a
@@ -68,15 +66,14 @@ export default function ContactPage() {
                 >
                   <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8A6246]">Phone</p>
                   <p className="mt-2 text-lg font-black text-[#30241F]">{phoneNumberDisplay}</p>
-                  <p className="mt-2 text-sm font-semibold leading-6 text-[#6A5647]">Placeholder phone line for calls and order questions.</p>
                 </a>
               </div>
 
               <div className="mt-6 grid gap-4 md:grid-cols-2">
                 <div className="rounded-2xl border border-[#D5C6B9] bg-[#FFF8EF] p-4">
                   <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8A6246]">Hours</p>
-                  <p className="mt-2 text-base font-black text-[#30241F]">Daily service hours</p>
-                  <p className="mt-2 text-sm font-semibold leading-6 text-[#6A5647]">Add the final opening times here when they are confirmed.</p>
+                  <p className="mt-2 text-base font-black text-[#30241F]">Open every day</p>
+                  <p className="mt-2 text-sm font-semibold leading-6 text-[#6A5647]">Monday to Sunday · 9:00 AM – 8:00 PM</p>
                 </div>
 
                 <div className="rounded-2xl border border-[#D5C6B9] bg-[#FFF8EF] p-4">
