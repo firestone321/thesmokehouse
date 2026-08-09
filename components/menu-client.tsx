@@ -246,9 +246,8 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
                             <div>
                               <h5 className="text-[11px] font-extrabold uppercase tracking-wide text-[#80624a]">Extras</h5>
                               <dl className="mt-2 space-y-1.5 text-xs font-medium text-[#4f4138]">
-                                <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4">
+                                <div>
                                   <dt>Signature sauces</dt>
-                                  <dd className="font-bold text-[#6a4d38]">100ml each</dd>
                                 </div>
                                 <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4">
                                   <dt>One 2-litre soda</dt>
