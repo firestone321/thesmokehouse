@@ -118,14 +118,6 @@ export default function ContactPage() {
                   </a>
                 </div>
               </div>
-
-              <div className="rounded-2xl border border-[#C3C5C1] bg-[#F7F7F4] p-5 shadow-card">
-                <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#A66B55]">Quick note</p>
-                <p className="mt-3 text-sm font-semibold leading-7 text-[#5F5D58]">
-                  Keep this page live while we finalize the actual contact details. The contact buttons can be swapped to the real
-                  number and WhatsApp link without changing the layout.
-                </p>
-              </div>
             </aside>
           </div>
         </section>
