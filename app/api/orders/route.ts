@@ -414,7 +414,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!isPubliclyAvailableOnServiceDate(dbItem.name, serviceDate)) {
-      return NextResponse.json({ error: "Oxtail and beef ribs are available Friday through Sunday only." }, { status: 400 });
+      return NextResponse.json({ error: "Oxtail and goat ribs are available Friday through Sunday only." }, { status: 400 });
     }
 
     const availableQuantity = Math.max(0, Number(dbItem.available_quantity ?? 0));

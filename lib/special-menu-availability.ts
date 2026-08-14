@@ -1,4 +1,4 @@
-const WEEKEND_SPECIAL_ITEM_NAMES = new Set(["oxtail", "beef oxtail", "beef ribs"]);
+const WEEKEND_SPECIAL_ITEM_NAMES = new Set(["oxtail", "oxtails", "beef oxtail", "beef oxtails", "goat ribs"]);
 
 export function isWeekendSpecialMenuItem(name: string): boolean {
   return WEEKEND_SPECIAL_ITEM_NAMES.has(name.trim().toLowerCase());

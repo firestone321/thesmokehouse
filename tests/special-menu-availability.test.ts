@@ -9,7 +9,8 @@ import {
 test("identifies the two weekend-only menu items", () => {
   assert.equal(isWeekendSpecialMenuItem("Beef oxtail"), true);
   assert.equal(isWeekendSpecialMenuItem("Oxtail"), true);
-  assert.equal(isWeekendSpecialMenuItem("Beef ribs"), true);
+  assert.equal(isWeekendSpecialMenuItem("Goat ribs"), true);
+  assert.equal(isWeekendSpecialMenuItem("Beef ribs"), false);
   assert.equal(isWeekendSpecialMenuItem("Country Platter for Four"), false);
 });
 
@@ -22,6 +23,7 @@ test("only Friday through Sunday are public special-item days", () => {
 
 test("keeps the Country Platter available while direct special items are weekday-blocked", () => {
   assert.equal(isPubliclyAvailableOnServiceDate("Beef oxtail", "2026-08-17"), false);
-  assert.equal(isPubliclyAvailableOnServiceDate("Beef ribs", "2026-08-17"), false);
+  assert.equal(isPubliclyAvailableOnServiceDate("Goat ribs", "2026-08-17"), false);
+  assert.equal(isPubliclyAvailableOnServiceDate("Beef ribs", "2026-08-17"), true);
   assert.equal(isPubliclyAvailableOnServiceDate("Country Platter for Four", "2026-08-17"), true);
 });
