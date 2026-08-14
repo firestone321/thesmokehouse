@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { getUgandaServiceDate } from "@/lib/menu-stock";
+import { isPubliclyAvailableOnServiceDate } from "@/lib/special-menu-availability";
 import { ensureGuestDeviceSession } from "@/lib/guest-device";
 import { setOrderAccessCookie } from "@/lib/order-access";
 import { generatePickupCode, generatePublicToken } from "@/lib/order-utils";
@@ -410,6 +411,10 @@ export async function POST(req: NextRequest) {
     const dbItem = menuMap.get(item.menu_item_id);
     if (!dbItem || !dbItem.is_active || !dbItem.is_available_today) {
       return NextResponse.json({ error: "One or more menu items are unavailable" }, { status: 400 });
+    }
+
+    if (!isPubliclyAvailableOnServiceDate(dbItem.name, serviceDate)) {
+      return NextResponse.json({ error: "Oxtail and beef ribs are available Friday through Sunday only." }, { status: 400 });
     }
 
     const availableQuantity = Math.max(0, Number(dbItem.available_quantity ?? 0));

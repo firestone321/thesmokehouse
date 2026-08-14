@@ -8,6 +8,8 @@ import { formatCurrency } from "@/lib/format";
 import { useCartStore } from "@/lib/store";
 import { useCartHydration } from "@/lib/use-cart-hydration";
 import { STOREFRONT_LOW_STOCK_COUNT_THRESHOLD } from "@/lib/stock-thresholds";
+import { getUgandaServiceDate } from "@/lib/menu-stock";
+import { isFridayThroughSundayServiceDate, isWeekendSpecialMenuItem } from "@/lib/special-menu-availability";
 
 const storefrontCategoryOrder = ["country_platter", "beef", "goat", "chicken", "sides"];
 
@@ -149,12 +151,16 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {filtered.map((item) => {
               const isOutOfStock = !item.is_available;
+              const isWeekendOnlyUnavailable =
+                isWeekendSpecialMenuItem(item.name) && !isFridayThroughSundayServiceDate(getUgandaServiceDate());
               const isCountryPlatter = item.category === "country_platter";
               const cartItem = safeCartItems.find((cartLine) => cartLine.menu_item_id === item.id);
               const selectedAddonIds = (cartItem?.accompaniments ?? []).map((a) => a.menu_item_id);
               const pendingSubtotal =
                 item.price + (cartItem?.accompaniments ?? []).reduce((sum, a) => sum + a.price, 0);
-              const stockMessage = isOutOfStock
+              const stockMessage = isWeekendOnlyUnavailable
+                ? "Available Friday-Sunday"
+                : isOutOfStock
                 ? "Out of stock"
                 : item.available_quantity <= STOREFRONT_LOW_STOCK_COUNT_THRESHOLD
                   ? `Only ${item.available_quantity} left`
@@ -370,7 +376,7 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
                           : "btn-primary"
                       }`}
                     >
-                      {isOutOfStock ? "Sold Out" : "Add"}
+                      {isWeekendOnlyUnavailable ? "Fri-Sun only" : isOutOfStock ? "Sold Out" : "Add"}
                     </button>
                   </div>
                 </article>

@@ -38,8 +38,9 @@ export default async function HomePage() {
   const localBypassEnabled = isLocalhostBypassEnabledForHost(headerStore.get("host"));
 
   try {
+    const serviceDate = getUgandaServiceDate();
     const { data, error } = await supabase.rpc("get_storefront_menu", {
-      p_service_date: getUgandaServiceDate()
+      p_service_date: serviceDate
     });
 
     if (error) {
@@ -50,7 +51,7 @@ export default async function HomePage() {
         console.error("Failed to load storefront menu.", error.message);
       }
     } else {
-      menuItems = (data as StorefrontMenuRpcRow[] ?? []).map(mapStorefrontMenuRpcRow);
+      menuItems = (data as StorefrontMenuRpcRow[] ?? []).map((item) => mapStorefrontMenuRpcRow(item, serviceDate));
     }
   } catch (error) {
     console.error("Unexpected menu load error.", error);

@@ -1,5 +1,6 @@
 import { MenuCategory, MenuItem, Order, OrderItem, OrderStatus, PaymentStatus } from "@/lib/types";
-import { resolveStockForPortion, StockSource } from "@/lib/menu-stock";
+import { getUgandaServiceDate, resolveStockForPortion, StockSource } from "@/lib/menu-stock";
+import { isPubliclyAvailableOnServiceDate } from "@/lib/special-menu-availability";
 import { toKampalaDateTimeString, toKampalaTimeString } from "@/lib/format";
 
 type MenuCategoryRelation =
@@ -137,7 +138,10 @@ export interface StorefrontMenuRpcRow {
   available_quantity: number;
 }
 
-export function mapStorefrontMenuRpcRow(row: StorefrontMenuRpcRow): MenuItem {
+export function mapStorefrontMenuRpcRow(
+  row: StorefrontMenuRpcRow,
+  serviceDate = getUgandaServiceDate()
+): MenuItem {
   const category = mapPrepTypeToMenuCategory(row.prep_type, {
     code: row.category_code,
     name: row.category_name
@@ -153,7 +157,11 @@ export function mapStorefrontMenuRpcRow(row: StorefrontMenuRpcRow): MenuItem {
     image_url: row.image_url,
     portion_label: row.portion_label ?? null,
     available_quantity,
-    is_available: Boolean(row.is_active) && Boolean(row.is_available_today) && available_quantity > 0
+    is_available:
+      Boolean(row.is_active) &&
+      Boolean(row.is_available_today) &&
+      available_quantity > 0 &&
+      isPubliclyAvailableOnServiceDate(row.name, serviceDate)
   };
 }
 

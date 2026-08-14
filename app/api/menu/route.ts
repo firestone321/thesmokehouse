@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isLocalhostBypassEnabledForHost } from "@/lib/local-bypass";
 import { getUgandaServiceDate } from "@/lib/menu-stock";
 import { mapStorefrontMenuRpcRow, StorefrontMenuRpcRow } from "@/lib/shared-schema";
+import { isPubliclyAvailableOnServiceDate } from "@/lib/special-menu-availability";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import type { MenuItem } from "@/lib/types";
 
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest) {
 
   if (!error) {
     return NextResponse.json(
-      (data as StorefrontMenuRpcRow[] ?? []).map(mapStorefrontMenuRpcRow),
+      (data as StorefrontMenuRpcRow[] ?? []).map((item) => mapStorefrontMenuRpcRow(item, serviceDate)),
       { headers: CACHE_HEADERS }
     );
   }
@@ -73,7 +74,7 @@ export async function GET(request: NextRequest) {
         image_url: item.image_url,
         portion_label: pt?.portion_label ?? null,
         available_quantity: 99,
-        is_available: true
+        is_available: isPubliclyAvailableOnServiceDate(item.name, serviceDate)
       };
     });
 

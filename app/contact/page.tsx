@@ -73,7 +73,8 @@ export default function ContactPage() {
                 <div className="rounded-2xl border border-[#D5C6B9] bg-[#FFF8EF] p-4">
                   <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8A6246]">Hours</p>
                   <p className="mt-2 text-base font-black text-[#30241F]">Open every day</p>
-                  <p className="mt-2 text-sm font-semibold leading-6 text-[#6A5647]">Monday to Sunday · 9:00 AM – 8:00 PM</p>
+                  <p className="mt-2 text-sm font-semibold leading-6 text-[#6A5647]">Monday to Friday · 9:00 AM – 8:00 PM</p>
+                  <p className="text-sm font-semibold leading-6 text-[#6A5647]">Saturday &amp; Sunday · 9:00 AM – 10:00 PM</p>
                 </div>
 
                 <div className="rounded-2xl border border-[#D5C6B9] bg-[#FFF8EF] p-4">
