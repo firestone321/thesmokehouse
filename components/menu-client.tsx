@@ -366,7 +366,7 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
                     ) : null}
                   </div>
 
-                  <div className="flex items-center justify-between border-t border-[#dfcbb5] bg-[#f4e9d9] px-3 py-2">
+                  <div className="flex items-center justify-between gap-4 border-t border-[#dfcbb5] bg-[#f4e9d9] px-3 py-2">
                     <div>
                       <span className="text-base font-black text-[#2b211b]">{formatCurrency(pendingSubtotal)}</span>
                       {pendingSubtotal !== item.price ? (
@@ -377,7 +377,11 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
                       type="button"
                       disabled={isUnavailable}
                       onClick={() => addMenuItem(item)}
-                      className={`rounded-md px-4 py-2 text-xs font-extrabold uppercase tracking-wide ${
+                      className={`shrink-0 rounded-md font-extrabold uppercase ${
+                        isWeekendOnlyUnavailable
+                          ? "px-2 py-1.5 text-[9px] tracking-normal"
+                          : "px-4 py-2 text-xs tracking-wide"
+                      } ${
                         isUnavailable
                           ? "cursor-not-allowed bg-[#d2bdaa] text-[#fff7ec] opacity-80"
                           : "btn-primary"
