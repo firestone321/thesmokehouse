@@ -1,7 +1,8 @@
 const WEEKEND_SPECIAL_ITEM_NAMES = new Set(["oxtail", "oxtails", "beef oxtail", "beef oxtails", "goat ribs"]);
 
 export function isWeekendSpecialMenuItem(name: string): boolean {
-  return WEEKEND_SPECIAL_ITEM_NAMES.has(name.trim().toLowerCase());
+  const normalizedName = name.trim().toLowerCase().replace(/^smoked\s+/, "");
+  return WEEKEND_SPECIAL_ITEM_NAMES.has(normalizedName);
 }
 
 export function isFridayThroughSundayServiceDate(serviceDate: string): boolean {
