@@ -166,7 +166,7 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
               const pendingSubtotal =
                 item.price + (cartItem?.accompaniments ?? []).reduce((sum, a) => sum + a.price, 0);
               const stockMessage = isWeekendOnlyUnavailable
-                ? "Available on weekends"
+                ? "Available on Weekends"
                 : isOutOfStock
                 ? "Out of stock"
                 : item.available_quantity <= STOREFRONT_LOW_STOCK_COUNT_THRESHOLD
@@ -383,7 +383,7 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
                           : "btn-primary"
                       }`}
                     >
-                      {isWeekendOnlyUnavailable ? "Available on weekends" : isOutOfStock ? "Sold Out" : "Add"}
+                      {isWeekendOnlyUnavailable ? "Available on Weekends" : isOutOfStock ? "Sold Out" : "Add"}
                     </button>
                   </div>
                 </article>

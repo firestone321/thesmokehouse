@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { getCartGroupId } from "@/lib/cart";
+import { getUgandaServiceDate } from "@/lib/menu-stock";
+import { isPubliclyAvailableOnServiceDate } from "@/lib/special-menu-availability";
 import { CartAccompaniment, CartItem } from "@/lib/types";
 
 type CartLineInput = Omit<CartItem, "qty" | "group_id" | "accompaniments">;
@@ -24,6 +26,10 @@ interface CartState {
 function sanitizeQuantity(value: unknown) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.min(Math.max(Math.trunc(parsed), 1), 20) : 1;
+}
+
+function isCartItemAvailableToday(name: string): boolean {
+  return isPubliclyAvailableOnServiceDate(name, getUgandaServiceDate());
 }
 
 function sanitizeAccompaniments(parentMenuItemId: number, parentQty: number, items: CartAccompaniment[] | undefined): CartAccompaniment[] {
@@ -74,7 +80,8 @@ function sanitizeCartItems(items: CartItem[]): CartItem[] {
         Number.isInteger(item.menu_item_id) &&
         item.menu_item_id > 0 &&
         Number.isFinite(item.price) &&
-        item.qty > 0
+        item.qty > 0 &&
+        isCartItemAvailableToday(item.name)
     );
 }
 
@@ -85,6 +92,8 @@ export const useCartStore = create<CartState>()(
       hasHydrated: false,
       setHasHydrated: (value) => set({ hasHydrated: value }),
       addItem: (item, accompaniments = []) => {
+        if (!isCartItemAvailableToday(item.name)) return;
+
         const existing = get().items.find((i) => i.menu_item_id === item.menu_item_id);
         const selectedAccompaniments = sanitizeAccompaniments(
           item.menu_item_id,
@@ -119,6 +128,9 @@ export const useCartStore = create<CartState>()(
         });
       },
       updateQty: (menu_item_id, qty) => {
+        const existing = get().items.find((item) => item.menu_item_id === menu_item_id);
+        if (existing && qty > existing.qty && !isCartItemAvailableToday(existing.name)) return;
+
         if (qty <= 0) {
           set({ items: get().items.filter((i) => i.menu_item_id !== menu_item_id) });
           return;
