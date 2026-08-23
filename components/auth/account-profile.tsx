@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/components/providers/auth-provider";
+import { OrderHistoryCard } from "@/components/auth/order-history-card";
 
 type AccountProfileProps = {
   email: string;
@@ -53,14 +54,7 @@ export function AccountProfile({ email, fullName }: AccountProfileProps) {
           </div>
         </div>
 
-        <div className="mt-6 rounded-[1.25rem] border border-[var(--border)] bg-[var(--surface-alt)] p-4">
-          <p className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--muted)]">
-            Guest orders
-          </p>
-          <p className="mt-2 text-sm font-semibold leading-6 text-[var(--foreground)]">
-            Orders placed on this device appear under <strong>Current Order</strong> and stay available for 24 hours after pickup.
-          </p>
-        </div>
+        <OrderHistoryCard />
 
         <button
           type="button"

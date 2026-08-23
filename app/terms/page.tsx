@@ -21,7 +21,7 @@ export default function TermsPage() {
               TERMS OF SERVICE
             </h1>
             <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-[#C9CBC7]">
-              Last updated: May 2026
+              Last updated: August 2026
             </p>
           </div>
         </section>
@@ -42,8 +42,10 @@ export default function TermsPage() {
               <h2 className="font-heading text-2xl tracking-normal text-[#30241F]">The service</h2>
               <p className="mt-3 text-sm leading-7 text-[#5F5D58]">
                 Firestone Country Smokehouse is a takeaway restaurant based in Uganda. The Service allows customers to
-                browse our menu, place pickup orders, and pay online via Pesapal. We do not offer delivery. All orders
-                are for pickup at our physical location.
+                browse our menu, place pickup orders, and pay through Pesapal or in cash at our venue. Pesapal is our
+                primary collection method, especially for online orders. Cash is available for customers who choose to
+                visit the venue or decide to purchase when they arrive. We do not offer delivery. All orders are for
+                pickup at our physical location.
               </p>
               <p className="mt-3 text-sm leading-7 text-[#5F5D58]">
                 Menu availability, pricing, and operating hours are subject to change without notice. We reserve the right
@@ -68,13 +70,17 @@ export default function TermsPage() {
             <div className="rounded-2xl border border-[#C3C5C1] bg-[#F7F7F4] p-6 shadow-card">
               <h2 className="font-heading text-2xl tracking-normal text-[#30241F]">Orders and payment</h2>
               <p className="mt-3 text-sm leading-7 text-[#5F5D58]">
-                Orders are confirmed once payment is successfully processed through Pesapal. Your order is locked in at
-                that point and sent to our kitchen. You will receive a pickup code to collect your order.
+                Pesapal is the preferred payment method for online orders. Orders paid through Pesapal are confirmed once
+                payment is successfully processed, then locked in and sent to our kitchen. Customers who choose to pay
+                cash may settle their payment at the venue when collecting their order or purchasing in person. You will
+                receive a pickup code where one is required for collection.
               </p>
               <p className="mt-3 text-sm leading-7 text-[#5F5D58]">
-                Prices are in Ugandan Shillings (UGX) and include applicable taxes. Payment is handled entirely by Pesapal;
-                we do not store your card details. Refunds for cancelled or unfulfillable orders are processed through
-                Pesapal and may take 3&ndash;10 business days depending on your payment method.
+                Prices are in Ugandan Shillings (UGX) and include applicable taxes. Online payments are handled by Pesapal;
+                we do not store your card details. Cash payments are collected directly at the venue and are not processed
+                by Pesapal. Refunds for cancelled or unfulfillable Pesapal-paid orders are processed through Pesapal and
+                may take 3&ndash;10 business days depending on your payment method. Any cash refund arrangement will be
+                handled at the venue.
               </p>
             </div>
 

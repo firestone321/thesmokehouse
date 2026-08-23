@@ -17,6 +17,7 @@ import { readJsonWithLimit, RequestBodyTooLargeError } from "@/lib/request-limit
 import { resolveSiteOrigin } from "@/lib/site-url";
 import { pickupSelectionToPromisedAt, type StorefrontMenuRpcRow } from "@/lib/shared-schema";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { getAuthenticatedUser } from "@/lib/supabase/auth-server";
 import { createOrderSchema } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
@@ -218,6 +219,8 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = getSupabaseAdmin();
+  const authenticatedUser = await getAuthenticatedUser();
+  const customerId = authenticatedUser?.id ?? null;
   const idempotencyKey = input.idempotency_key ?? null;
   const requestHash = buildCheckoutRequestHash({
     ...input,
@@ -456,21 +459,27 @@ export async function POST(req: NextRequest) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const publicToken = generatePublicToken();
     const pickupCode = generatePickupCode();
+    const checkoutParameters = {
+      p_idempotency_key: idempotencyKey,
+      p_request_hash: idempotencyKey ? requestHash : null,
+      p_public_token: publicToken,
+      p_pickup_code: pickupCode,
+      p_device_id: guestDevice.deviceId,
+      p_customer_name: input.name,
+      p_customer_phone: input.phone,
+      p_notes: input.notes || null,
+      p_service_date: serviceDate,
+      p_promised_at: promisedAt,
+      p_total_amount: total,
+      p_items: orderItemsToInsert
+    };
     const { data: rpcData, error: rpcError } = await checkoutTimer.measure("checkout_prepare", () =>
-      supabase.rpc("prepare_storefront_checkout_payment", {
-        p_idempotency_key: idempotencyKey,
-        p_request_hash: idempotencyKey ? requestHash : null,
-        p_public_token: publicToken,
-        p_pickup_code: pickupCode,
-        p_device_id: guestDevice.deviceId,
-        p_customer_name: input.name,
-        p_customer_phone: input.phone,
-        p_notes: input.notes || null,
-        p_service_date: serviceDate,
-        p_promised_at: promisedAt,
-        p_total_amount: total,
-        p_items: orderItemsToInsert
-      })
+      customerId
+        ? supabase.rpc("prepare_storefront_checkout_payment_for_customer", {
+            p_customer_id: customerId,
+            ...checkoutParameters
+          })
+        : supabase.rpc("prepare_storefront_checkout_payment", checkoutParameters)
     );
 
     if (rpcError) {
@@ -511,6 +520,18 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
           { error: "Your order is already being processed. Please wait." },
           { status: 409 }
+        );
+      }
+
+      if (
+        customerId &&
+        (rpcError.message?.includes("prepare_storefront_checkout_payment_for_customer") ||
+          rpcError.message?.includes("customer_id"))
+      ) {
+        await markReservation("failed");
+        return NextResponse.json(
+          { error: "Account order history is not applied in Supabase yet. Run Phase 74 and try again." },
+          { status: 500 }
         );
       }
 
