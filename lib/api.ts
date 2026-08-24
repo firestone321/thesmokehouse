@@ -17,16 +17,21 @@ export async function getMenu(): Promise<MenuItem[]> {
   return res.json();
 }
 
-export async function createOrder(payload: CreateOrderPayload): Promise<{
+export async function createOrder(payload: CreateOrderPayload, accessToken?: string | null): Promise<{
   public_token: string;
   order_number: string;
   pickup_code: string | null;
   payment_status: string;
   redirect_url: string | null;
 }> {
+  const headers: HeadersInit = { "Content-Type": "application/json" };
+  if (accessToken?.trim()) {
+    headers.Authorization = `Bearer ${accessToken.trim()}`;
+  }
+
   const res = await fetch("/api/orders", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(payload)
   });
 

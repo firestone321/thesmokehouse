@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { formatCurrency, formatPaymentStatus, formatStatus } from "@/lib/format";
 import type { Order } from "@/lib/types";
+import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 type HistoryState = "idle" | "loading" | "ready" | "error";
 
@@ -18,7 +19,12 @@ export function OrderHistoryCard() {
     setError(null);
 
     try {
-      const response = await fetch("/api/account/orders", { cache: "no-store" });
+      const { data: sessionData } = await getSupabaseBrowserClient().auth.getSession();
+      const headers: HeadersInit = {};
+      if (sessionData.session?.access_token) {
+        headers.Authorization = `Bearer ${sessionData.session.access_token}`;
+      }
+      const response = await fetch("/api/account/orders", { cache: "no-store", headers });
       const payload = (await response.json().catch(() => null)) as { orders?: Order[]; error?: string } | null;
 
       if (!response.ok) {
@@ -37,7 +43,7 @@ export function OrderHistoryCard() {
     const nextIsOpen = !isOpen;
     setIsOpen(nextIsOpen);
 
-    if (nextIsOpen && historyState !== "ready" && historyState !== "loading") {
+    if (nextIsOpen && historyState !== "loading") {
       void loadHistory();
     }
   }

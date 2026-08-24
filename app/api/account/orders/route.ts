@@ -1,18 +1,19 @@
 import { NextResponse } from "next/server";
 import { mapSharedOrder } from "@/lib/shared-schema";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { getAuthenticatedUser } from "@/lib/supabase/auth-server";
+import { getAuthenticatedUser, getBearerToken } from "@/lib/supabase/auth-server";
 
 export const dynamic = "force-dynamic";
 
 const orderSelection =
   "id,order_number,public_token,device_id,pickup_code,customer_name,customer_phone,status,payment_status,promised_at,notes,total_amount,created_at,completed_at,cancelled_at,order_items(id,menu_item_id,menu_item_name,quantity,unit_price,menu_items(name,image_url))";
 
-export async function GET() {
-  const user = await getAuthenticatedUser();
+export async function GET(request: Request) {
+  const accessToken = getBearerToken(request);
+  const user = await getAuthenticatedUser(accessToken);
 
   if (!user) {
-    return NextResponse.json({ error: "Sign in to view your order history." }, { status: 401 });
+    return NextResponse.json({ error: accessToken ? "Your sign-in session expired. Refresh and sign in again." : "Sign in to view your order history." }, { status: 401 });
   }
 
   const { data, error } = await getSupabaseAdmin()

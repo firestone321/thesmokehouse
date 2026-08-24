@@ -7,11 +7,14 @@ import { flattenCartForCheckout } from "@/lib/cart";
 import { formatCurrency } from "@/lib/format";
 import { rememberGuestOrder } from "@/lib/guest-order";
 import { useCartHydration } from "@/lib/use-cart-hydration";
+import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { useAuth } from "@/components/providers/auth-provider";
 
 export function CheckoutForm() {
   const items = useCartStore((s) => s.items);
   const total = useCartStore((s) => s.total);
   const hydrated = useCartHydration();
+  const { user } = useAuth();
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -37,6 +40,11 @@ export function CheckoutForm() {
     setSubmitting(true);
 
     try {
+      const { data: sessionData } = await getSupabaseBrowserClient().auth.getSession();
+      if (user && !sessionData.session?.access_token) {
+        throw new Error("Your sign-in session is not ready. Refresh the page before placing this order.");
+      }
+
       const result = await createOrder({
         items: flattenCartForCheckout(safeItems),
         pickup_time: pickupTime,
@@ -44,7 +52,7 @@ export function CheckoutForm() {
         phone: phone.trim(),
         notes: notes.trim(),
         idempotency_key: idempotencyKey.current
-      });
+      }, sessionData.session?.access_token);
 
       rememberGuestOrder(result.public_token);
 
@@ -64,7 +72,7 @@ export function CheckoutForm() {
   return (
     <form onSubmit={onSubmit} className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
       <div className="min-w-0 space-y-4 rounded-2xl border border-[#C3C5C1] bg-[#F7F7F4] p-5 shadow-card">
-        <h2 className="text-xl font-bold text-[#30241F]">Guest Checkout</h2>
+        <h2 className="text-xl font-bold text-[#30241F]">{user ? "Signed-in Checkout" : "Guest Checkout"}</h2>
 
         <label className="block text-sm font-semibold text-[#30241F]">
           Name

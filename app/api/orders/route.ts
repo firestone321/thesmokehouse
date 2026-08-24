@@ -17,7 +17,7 @@ import { readJsonWithLimit, RequestBodyTooLargeError } from "@/lib/request-limit
 import { resolveSiteOrigin } from "@/lib/site-url";
 import { pickupSelectionToPromisedAt, type StorefrontMenuRpcRow } from "@/lib/shared-schema";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { getAuthenticatedUser } from "@/lib/supabase/auth-server";
+import { getAuthenticatedUser, getBearerToken } from "@/lib/supabase/auth-server";
 import { createOrderSchema } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
@@ -219,7 +219,11 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = getSupabaseAdmin();
-  const authenticatedUser = await getAuthenticatedUser();
+  const accessToken = getBearerToken(req);
+  const authenticatedUser = await getAuthenticatedUser(accessToken);
+  if (accessToken && !authenticatedUser) {
+    return NextResponse.json({ error: "Your sign-in session expired. Refresh the page and sign in again." }, { status: 401 });
+  }
   const customerId = authenticatedUser?.id ?? null;
   const idempotencyKey = input.idempotency_key ?? null;
   const requestHash = buildCheckoutRequestHash({
@@ -239,6 +243,26 @@ export async function POST(req: NextRequest) {
       })
       .eq("idempotency_key", idempotencyKey)
       .eq("request_hash", requestHash);
+  }
+
+  if (authenticatedUser) {
+    const email = authenticatedUser.email?.trim();
+    if (!email) {
+      await markReservation("failed", undefined, "signed_in_customer_email_missing");
+      return NextResponse.json({ error: "Your account is missing an email address. Please contact support before ordering." }, { status: 400 });
+    }
+
+    const fullName = typeof authenticatedUser.user_metadata?.full_name === "string"
+      ? authenticatedUser.user_metadata.full_name.trim() || null
+      : null;
+    const { error: customerError } = await supabase.from("customers").upsert(
+      { id: authenticatedUser.id, email, full_name: fullName },
+      { onConflict: "id", ignoreDuplicates: true }
+    );
+    if (customerError) {
+      await markReservation("failed", undefined, customerError.message);
+      return NextResponse.json({ error: "Signed-in ordering is not ready yet. Please try again after the account database is updated." }, { status: 503 });
+    }
   }
 
   async function finishCheckoutForOrder(
