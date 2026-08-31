@@ -5,6 +5,10 @@ import { scheduleDuePendingPaymentRecovery, syncPesapalPaymentForOrder } from "@
 import { buildPesapalIpnAck, type PesapalNotificationPayload } from "@/lib/payments/pesapal-ipn";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { readJsonWithLimit, readRequestTextWithLimit, RequestBodyTooLargeError } from "@/lib/request-limits";
+import {
+  scheduleDueAdminPaidOrderPushProcessing,
+  triggerAdminPaidOrderPushDispatch
+} from "@/lib/push/admin-paid-order";
 
 function getProviderBucket(token: string | null | undefined, orderTrackingId: string | null | undefined) {
   const normalizedToken = token?.trim();
@@ -58,7 +62,7 @@ async function parseNotificationPayload(request: Request): Promise<PesapalNotifi
 
 async function syncNotificationPayment(request: Request, payload: PesapalNotificationPayload, token: string, orderTrackingId: string) {
   try {
-    await syncPesapalPaymentForOrder({
+    return await syncPesapalPaymentForOrder({
       publicToken: token,
       orderTrackingId,
       merchantReference: token
@@ -115,6 +119,7 @@ async function handleNotification(request: Request) {
   const token = payload.OrderMerchantReference?.trim();
   const orderTrackingId = payload.OrderTrackingId?.trim();
   const receivedAt = new Date().toISOString();
+  let paidOrderId: number | null = null;
   console.info("pesapal_ipn_received", {
     receivedAt,
     notificationType: payload.OrderNotificationType ?? null,
@@ -165,7 +170,10 @@ async function handleNotification(request: Request) {
   }
 
   try {
-    await syncNotificationPayment(request, payload, token, orderTrackingId);
+    const snapshot = await syncNotificationPayment(request, payload, token, orderTrackingId);
+    if (snapshot.paymentStatus === "paid") {
+      paidOrderId = snapshot.orderId;
+    }
     console.info("pesapal_ipn_ack_sent", {
       receivedAt,
       acknowledgedAt: new Date().toISOString(),
@@ -183,6 +191,16 @@ async function handleNotification(request: Request) {
     return NextResponse.json(buildPesapalIpnAck(payload, 500), { status: 200 });
   } finally {
     after(async () => {
+      if (paidOrderId !== null) {
+        await triggerAdminPaidOrderPushDispatch(paidOrderId).catch((error) => {
+          console.error("admin_paid_order_push_immediate_kick_failed", {
+            trigger: "pesapal_ipn",
+            orderId: paidOrderId,
+            error: error instanceof Error ? error.message : "unknown_error"
+          });
+        });
+      }
+      await scheduleDueAdminPaidOrderPushProcessing("pesapal_ipn");
       await scheduleDuePendingPaymentRecovery("pesapal_ipn");
     });
   }

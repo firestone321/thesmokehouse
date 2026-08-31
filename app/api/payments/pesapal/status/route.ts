@@ -4,6 +4,10 @@ import { logSecurityEvent } from "@/lib/observability/security-events";
 import { getOrderPaymentSnapshot, scheduleDuePendingPaymentRecovery } from "@/lib/payments/order-payments";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import {
+  scheduleDueAdminPaidOrderPushProcessing,
+  triggerAdminPaidOrderPushDispatch
+} from "@/lib/push/admin-paid-order";
 
 function tooManyRequests(retryAfterSeconds: number) {
   return NextResponse.json(
@@ -94,6 +98,16 @@ export async function GET(request: Request) {
     });
 
     after(async () => {
+      if (order.paymentStatus === "paid") {
+        await triggerAdminPaidOrderPushDispatch(order.orderId).catch((error) => {
+          console.error("admin_paid_order_push_immediate_kick_failed", {
+            trigger: "payment_status",
+            orderId: order.orderId,
+            error: error instanceof Error ? error.message : "unknown_error"
+          });
+        });
+      }
+      await scheduleDueAdminPaidOrderPushProcessing("payment_status");
       await scheduleDuePendingPaymentRecovery("payment_status");
     });
 

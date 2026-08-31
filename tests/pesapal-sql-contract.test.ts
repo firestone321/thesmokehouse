@@ -11,6 +11,7 @@ const orderPayments = source("lib/payments/order-payments.ts");
 const callbackRoute = source("app/api/payments/pesapal/callback/route.ts");
 const ipnRoute = source("app/api/payments/pesapal/ipn/route.ts");
 const cronRoute = source("app/api/internal/payments/recovery/cron/route.ts");
+const adminPaidOrderPush = source("lib/push/admin-paid-order.ts");
 
 test("provider verification mutations use the row-locked database RPC", () => {
   assert.match(orderPayments, /rpc\("apply_pesapal_payment_verification"/);
@@ -51,4 +52,12 @@ test("independent recovery requires a dedicated bearer secret", () => {
   assert.match(cronRoute, /PAYMENT_RECOVERY_CRON_SECRET/);
   assert.match(cronRoute, /timingSafeEqual/);
   assert.match(cronRoute, /reconcileDuePendingPayments\("supabase_cron"/);
+  assert.match(cronRoute, /processDueAdminPaidOrderPushDispatches\(\)/);
+});
+
+test("admin paid-order pushes have immediate and due-queue delivery paths", () => {
+  assert.match(callbackRoute, /triggerAdminPaidOrderPushDispatch\(paidOrderId\)/);
+  assert.match(ipnRoute, /triggerAdminPaidOrderPushDispatch\(paidOrderId\)/);
+  assert.match(adminPaidOrderPush, /admin_push_dispatches/);
+  assert.match(adminPaidOrderPush, /status\.in\.\(pending,no_subscribers\)/);
 });

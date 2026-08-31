@@ -8,6 +8,10 @@ import {
 } from "@/lib/payments/order-payments";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { resolveSiteOrigin } from "@/lib/site-url";
+import {
+  scheduleDueAdminPaidOrderPushProcessing,
+  triggerAdminPaidOrderPushDispatch
+} from "@/lib/push/admin-paid-order";
 
 function tooManyRequests(retryAfterSeconds: number) {
   return NextResponse.json(
@@ -25,6 +29,7 @@ export async function GET(request: Request) {
   const cancelled = requestUrl.searchParams.get("cancelled") === "1";
   const receivedAt = new Date().toISOString();
   let cancellationConfirmed = false;
+  let paidOrderId: number | null = null;
   console.info("pesapal_callback_received", {
     receivedAt,
     orderTrackingId: orderTrackingId ?? null,
@@ -68,11 +73,14 @@ export async function GET(request: Request) {
         });
         cancellationConfirmed = snapshot.paymentStatus === "cancelled";
       } else if (orderTrackingId) {
-        await syncPesapalPaymentForOrder({
+        const snapshot = await syncPesapalPaymentForOrder({
           publicToken: token,
           orderTrackingId,
           merchantReference: token
         });
+        if (snapshot.paymentStatus === "paid") {
+          paidOrderId = snapshot.orderId;
+        }
       }
     } catch (error) {
       if (orderTrackingId) {
@@ -141,6 +149,16 @@ export async function GET(request: Request) {
   }
 
   after(async () => {
+    if (paidOrderId !== null) {
+      await triggerAdminPaidOrderPushDispatch(paidOrderId).catch((error) => {
+        console.error("admin_paid_order_push_immediate_kick_failed", {
+          trigger: "pesapal_callback",
+          orderId: paidOrderId,
+          error: error instanceof Error ? error.message : "unknown_error"
+        });
+      });
+    }
+    await scheduleDueAdminPaidOrderPushProcessing("pesapal_callback");
     await scheduleDuePendingPaymentRecovery("pesapal_callback");
   });
 

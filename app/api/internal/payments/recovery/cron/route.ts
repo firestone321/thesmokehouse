@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { reconcileDuePendingPayments } from "@/lib/payments/order-payments";
+import { processDueAdminPaidOrderPushDispatches } from "@/lib/push/admin-paid-order";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -33,13 +34,15 @@ async function processRecoveryCron(request: Request) {
   const startedAt = new Date().toISOString();
 
   try {
-    const stats = await reconcileDuePendingPayments("supabase_cron", { limit: 2 });
+    const paymentStats = await reconcileDuePendingPayments("supabase_cron", { limit: 2 });
+    const adminPushStats = await processDueAdminPaidOrderPushDispatches();
     console.info("pending_payment_recovery_cron_completed", {
       startedAt,
       completedAt: new Date().toISOString(),
-      stats
+      stats: paymentStats,
+      adminPushStats
     });
-    return NextResponse.json({ accepted: true, startedAt, stats }, { status: 200 });
+    return NextResponse.json({ accepted: true, startedAt, stats: paymentStats, adminPushStats }, { status: 200 });
   } catch (error) {
     console.error("pending_payment_recovery_cron_failed", {
       startedAt,

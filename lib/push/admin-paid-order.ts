@@ -4,10 +4,21 @@ import {
   requireInternalRequestSigningSecret,
   signInternalRequestToken
 } from "@/lib/internal-auth";
+import { getSupabaseAdmin } from "@/lib/supabase";
 
 const ADMIN_PAID_ORDER_PUSH_PURPOSE = "admin_paid_order_push_dispatch";
 const PRODUCTION_ADMIN_DASHBOARD_BASE_URL = "https://admin.firestonesmokehouse.com";
 const ADMIN_PAID_ORDER_PUSH_TIMEOUT_MS = 8_000;
+const ADMIN_PAID_ORDER_DUE_SCAN_LIMIT = 5;
+const ADMIN_PAID_ORDER_STALE_PROCESSING_MS = 5 * 60_000;
+
+let adminPaidOrderDueScanPromise: Promise<AdminPaidOrderDueScanStats> | null = null;
+
+export type AdminPaidOrderDueScanStats = {
+  scanned: number;
+  triggered: number;
+  failed: number;
+};
 
 function readEnv(name: string) {
   const value = process.env[name]?.trim();
@@ -83,4 +94,61 @@ export async function triggerAdminPaidOrderPushDispatch(orderId: number) {
   }
 
   return { attempted: true, triggered: true, message: null };
+}
+
+export async function processDueAdminPaidOrderPushDispatches(
+  limit = ADMIN_PAID_ORDER_DUE_SCAN_LIMIT
+): Promise<AdminPaidOrderDueScanStats> {
+  const normalizedLimit = Math.max(1, Math.min(10, Math.trunc(limit)));
+  const now = new Date();
+  const staleBefore = new Date(now.getTime() - ADMIN_PAID_ORDER_STALE_PROCESSING_MS).toISOString();
+  const { data, error } = await getSupabaseAdmin()
+    .from("admin_push_dispatches")
+    .select("order_id")
+    .eq("notification_type", "new_paid_order")
+    .or(
+      `and(status.in.(pending,no_subscribers),next_attempt_at.lte.${now.toISOString()}),and(status.eq.processing,last_attempt_at.lte.${staleBefore})`
+    )
+    .order("next_attempt_at", { ascending: true })
+    .limit(normalizedLimit);
+
+  if (error) {
+    throw new Error(`Unable to load due admin paid-order pushes: ${error.message}`);
+  }
+
+  const orderIds = Array.from(new Set((data ?? []).map((row) => Number(row.order_id)).filter(Number.isFinite)));
+  const results = await Promise.allSettled(orderIds.map((orderId) => triggerAdminPaidOrderPushDispatch(orderId)));
+  const failed = results.filter((result) => result.status === "rejected").length;
+
+  return {
+    scanned: orderIds.length,
+    triggered: orderIds.length - failed,
+    failed
+  };
+}
+
+export function scheduleDueAdminPaidOrderPushProcessing(trigger: string) {
+  if (adminPaidOrderDueScanPromise) {
+    return adminPaidOrderDueScanPromise;
+  }
+
+  adminPaidOrderDueScanPromise = processDueAdminPaidOrderPushDispatches()
+    .then((stats) => {
+      if (stats.scanned > 0) {
+        console.info("admin_paid_order_push_due_scan_completed", { trigger, ...stats });
+      }
+      return stats;
+    })
+    .catch((error) => {
+      console.error("admin_paid_order_push_due_scan_failed", {
+        trigger,
+        error: error instanceof Error ? error.message : "unknown_error"
+      });
+      return { scanned: 0, triggered: 0, failed: 1 };
+    })
+    .finally(() => {
+      adminPaidOrderDueScanPromise = null;
+    });
+
+  return adminPaidOrderDueScanPromise;
 }
