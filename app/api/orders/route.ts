@@ -507,6 +507,14 @@ export async function POST(req: NextRequest) {
     );
 
     if (rpcError) {
+      console.error("storefront_checkout_prepare_failed", {
+        customerId,
+        code: rpcError.code ?? null,
+        message: rpcError.message ?? null,
+        details: rpcError.details ?? null,
+        hint: rpcError.hint ?? null
+      });
+
       if (rpcError.code === "23505") continue; // public_token collision, retry
 
       if (idempotencyKey && rpcError.message?.includes("checkout_reservation_conflict")) {
@@ -554,7 +562,7 @@ export async function POST(req: NextRequest) {
       ) {
         await markReservation("failed");
         return NextResponse.json(
-          { error: "Account order history is not applied in Supabase yet. Run Phase 74 and try again." },
+          { error: `Signed-in checkout database error: ${rpcError.message}` },
           { status: 500 }
         );
       }
@@ -576,15 +584,33 @@ export async function POST(req: NextRequest) {
       }
 
       await markReservation("failed");
-      return NextResponse.json({ error: "Failed to create order" }, { status: 500 });
+      return NextResponse.json(
+        {
+          error: customerId
+            ? `Signed-in checkout failed: ${rpcError.message}`
+            : "Failed to create order"
+        },
+        { status: 500 }
+      );
     }
 
     const rows = rpcData as unknown as PreparedCheckoutRpcRow[];
     const preparedRow = rows?.[0];
 
     if (!preparedRow) {
+      console.error("storefront_checkout_prepare_empty", {
+        customerId,
+        rpcData
+      });
       await markReservation("failed");
-      return NextResponse.json({ error: "Failed to create order" }, { status: 500 });
+      return NextResponse.json(
+        {
+          error: customerId
+            ? "Signed-in checkout returned no order from the database"
+            : "Failed to create order"
+        },
+        { status: 500 }
+      );
     }
 
     return finishCheckoutForOrder(
