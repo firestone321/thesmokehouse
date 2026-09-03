@@ -10,9 +10,7 @@ import { useCartHydration } from "@/lib/use-cart-hydration";
 import { STOREFRONT_LOW_STOCK_COUNT_THRESHOLD } from "@/lib/stock-thresholds";
 import { getUgandaServiceDate } from "@/lib/menu-stock";
 import {
-  isFridayThroughSundayServiceDate,
-  isPubliclyAvailableOnServiceDate,
-  isWeekendSpecialMenuItem
+  isPubliclyAvailableOnServiceDate
 } from "@/lib/special-menu-availability";
 
 const storefrontCategoryOrder = ["country_platter", "beef", "goat", "chicken", "sides"];
@@ -126,7 +124,7 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
   }
 
   function addMenuItem(item: MenuItem) {
-    if (!item.is_available || !isPubliclyAvailableOnServiceDate(item.name, getUgandaServiceDate())) return;
+    if (!item.is_available || !isPubliclyAvailableOnServiceDate({ days: item.availability_days, startDate: item.availability_start_date, endDate: item.availability_end_date }, getUgandaServiceDate())) return;
 
     addItem({ menu_item_id: item.id, name: item.name, price: item.price, image_url: item.image_url });
   }
@@ -156,17 +154,17 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {filtered.map((item) => {
-              const isOutOfStock = !item.is_available;
-              const isWeekendOnlyUnavailable =
-                isWeekendSpecialMenuItem(item.name) && !isFridayThroughSundayServiceDate(getUgandaServiceDate());
-              const isUnavailable = isOutOfStock || isWeekendOnlyUnavailable;
+              const isScheduledUnavailable =
+                !isPubliclyAvailableOnServiceDate({ days: item.availability_days, startDate: item.availability_start_date, endDate: item.availability_end_date }, getUgandaServiceDate());
+              const isOutOfStock = !item.is_available && !isScheduledUnavailable;
+              const isUnavailable = isOutOfStock || isScheduledUnavailable;
               const isCountryPlatter = item.category === "country_platter";
               const cartItem = safeCartItems.find((cartLine) => cartLine.menu_item_id === item.id);
               const selectedAddonIds = (cartItem?.accompaniments ?? []).map((a) => a.menu_item_id);
               const pendingSubtotal =
                 item.price + (cartItem?.accompaniments ?? []).reduce((sum, a) => sum + a.price, 0);
-              const stockMessage = isWeekendOnlyUnavailable
-                ? "Available on Weekends"
+              const stockMessage = isScheduledUnavailable
+                ? "Available on selected days"
                 : isOutOfStock
                 ? "Out of stock"
                 : item.available_quantity <= STOREFRONT_LOW_STOCK_COUNT_THRESHOLD
@@ -378,7 +376,7 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
                       disabled={isUnavailable}
                       onClick={() => addMenuItem(item)}
                       className={`shrink-0 rounded-md font-extrabold uppercase ${
-                        isWeekendOnlyUnavailable
+                        isScheduledUnavailable
                           ? "px-2 py-1.5 text-[9px] tracking-normal"
                           : "px-4 py-2 text-xs tracking-wide"
                       } ${
@@ -387,7 +385,7 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
                           : "btn-primary"
                       }`}
                     >
-                      {isWeekendOnlyUnavailable ? "Available on Weekends" : isOutOfStock ? "Sold Out" : "Add"}
+                      {isScheduledUnavailable ? "Available on selected days" : isOutOfStock ? "Sold Out" : "Add"}
                     </button>
                   </div>
                 </article>

@@ -14,6 +14,9 @@ export interface MenuItem {
   portion_label: string | null;
   available_quantity: number;
   is_available: boolean;
+  availability_days?: number[] | null;
+  availability_start_date?: string | null;
+  availability_end_date?: string | null;
 }
 
 export interface CartItem {
@@ -24,6 +27,9 @@ export interface CartItem {
   image_url?: string | null;
   group_id?: string;
   accompaniments?: CartAccompaniment[];
+  availability_days?: number[] | null;
+  availability_start_date?: string | null;
+  availability_end_date?: string | null;
 }
 
 export interface CartAccompaniment {

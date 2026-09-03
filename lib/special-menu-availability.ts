@@ -1,19 +1,17 @@
-const WEEKEND_SPECIAL_ITEM_NAMES = new Set(["oxtail", "oxtails", "beef oxtail", "beef oxtails", "goat ribs"]);
-
-export function isWeekendSpecialMenuItem(name: string): boolean {
-  const normalizedName = name.trim().toLowerCase().replace(/^smoked\s+/, "");
-  return WEEKEND_SPECIAL_ITEM_NAMES.has(normalizedName);
+export interface MenuAvailabilitySchedule {
+  days?: number[] | null;
+  startDate?: string | null;
+  endDate?: string | null;
 }
 
-export function isFridayThroughSundayServiceDate(serviceDate: string): boolean {
+export function isPubliclyAvailableOnServiceDate(schedule: MenuAvailabilitySchedule | undefined, serviceDate: string): boolean {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(serviceDate);
   if (!match) return false;
 
   const [, year, month, day] = match;
   const weekday = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day))).getUTCDay();
-  return weekday === 0 || weekday === 5 || weekday === 6;
-}
-
-export function isPubliclyAvailableOnServiceDate(itemName: string, serviceDate: string): boolean {
-  return !isWeekendSpecialMenuItem(itemName) || isFridayThroughSundayServiceDate(serviceDate);
+  if (schedule?.days && schedule.days.length > 0 && !schedule.days.includes(weekday)) return false;
+  if (schedule?.startDate && serviceDate < schedule.startDate) return false;
+  if (schedule?.endDate && serviceDate > schedule.endDate) return false;
+  return true;
 }

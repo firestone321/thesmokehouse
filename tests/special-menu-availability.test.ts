@@ -1,32 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  isFridayThroughSundayServiceDate,
-  isPubliclyAvailableOnServiceDate,
-  isWeekendSpecialMenuItem
+  isPubliclyAvailableOnServiceDate
 } from "@/lib/special-menu-availability";
 
-test("identifies the two weekend-only menu items", () => {
-  assert.equal(isWeekendSpecialMenuItem("Beef oxtail"), true);
-  assert.equal(isWeekendSpecialMenuItem("Smoked beef oxtail"), true);
-  assert.equal(isWeekendSpecialMenuItem("Oxtail"), true);
-  assert.equal(isWeekendSpecialMenuItem("Goat ribs"), true);
-  assert.equal(isWeekendSpecialMenuItem("Smoked Goat Ribs"), true);
-  assert.equal(isWeekendSpecialMenuItem("Beef ribs"), false);
-  assert.equal(isWeekendSpecialMenuItem("Smoked Beef Ribs"), false);
-  assert.equal(isWeekendSpecialMenuItem("Country Platter for Four"), false);
+test("supports recurring weekday availability", () => {
+  const weekend = { days: [0, 5, 6] };
+  assert.equal(isPubliclyAvailableOnServiceDate(weekend, "2026-08-14"), true);
+  assert.equal(isPubliclyAvailableOnServiceDate(weekend, "2026-08-15"), true);
+  assert.equal(isPubliclyAvailableOnServiceDate(weekend, "2026-08-16"), true);
+  assert.equal(isPubliclyAvailableOnServiceDate(weekend, "2026-08-17"), false);
 });
 
-test("only Friday through Sunday are public special-item days", () => {
-  assert.equal(isFridayThroughSundayServiceDate("2026-08-14"), true);
-  assert.equal(isFridayThroughSundayServiceDate("2026-08-15"), true);
-  assert.equal(isFridayThroughSundayServiceDate("2026-08-16"), true);
-  assert.equal(isFridayThroughSundayServiceDate("2026-08-17"), false);
-});
-
-test("keeps the Country Platter available while direct special items are weekday-blocked", () => {
-  assert.equal(isPubliclyAvailableOnServiceDate("Smoked beef oxtail", "2026-08-17"), false);
-  assert.equal(isPubliclyAvailableOnServiceDate("Smoked Goat Ribs", "2026-08-17"), false);
-  assert.equal(isPubliclyAvailableOnServiceDate("Beef ribs", "2026-08-17"), true);
-  assert.equal(isPubliclyAvailableOnServiceDate("Country Platter for Four", "2026-08-17"), true);
+test("supports optional schedule date boundaries", () => {
+  const schedule = { days: [5, 6, 0], startDate: "2026-08-14", endDate: "2026-08-30" };
+  assert.equal(isPubliclyAvailableOnServiceDate(schedule, "2026-08-07"), false);
+  assert.equal(isPubliclyAvailableOnServiceDate(schedule, "2026-08-15"), true);
+  assert.equal(isPubliclyAvailableOnServiceDate(schedule, "2026-09-05"), false);
 });

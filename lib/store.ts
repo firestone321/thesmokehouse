@@ -28,8 +28,8 @@ function sanitizeQuantity(value: unknown) {
   return Number.isFinite(parsed) ? Math.min(Math.max(Math.trunc(parsed), 1), 20) : 1;
 }
 
-function isCartItemAvailableToday(name: string): boolean {
-  return isPubliclyAvailableOnServiceDate(name, getUgandaServiceDate());
+function isCartItemAvailableToday(item: Pick<CartItem, "availability_days" | "availability_start_date" | "availability_end_date">): boolean {
+  return isPubliclyAvailableOnServiceDate({ days: item.availability_days, startDate: item.availability_start_date, endDate: item.availability_end_date }, getUgandaServiceDate());
 }
 
 function sanitizeAccompaniments(parentMenuItemId: number, parentQty: number, items: CartAccompaniment[] | undefined): CartAccompaniment[] {
@@ -81,7 +81,7 @@ function sanitizeCartItems(items: CartItem[]): CartItem[] {
         item.menu_item_id > 0 &&
         Number.isFinite(item.price) &&
         item.qty > 0 &&
-        isCartItemAvailableToday(item.name)
+        isCartItemAvailableToday(item)
     );
 }
 
@@ -92,7 +92,7 @@ export const useCartStore = create<CartState>()(
       hasHydrated: false,
       setHasHydrated: (value) => set({ hasHydrated: value }),
       addItem: (item, accompaniments = []) => {
-        if (!isCartItemAvailableToday(item.name)) return;
+        if (!isCartItemAvailableToday(item)) return;
 
         const existing = get().items.find((i) => i.menu_item_id === item.menu_item_id);
         const selectedAccompaniments = sanitizeAccompaniments(
@@ -129,7 +129,7 @@ export const useCartStore = create<CartState>()(
       },
       updateQty: (menu_item_id, qty) => {
         const existing = get().items.find((item) => item.menu_item_id === menu_item_id);
-        if (existing && qty > existing.qty && !isCartItemAvailableToday(existing.name)) return;
+        if (existing && qty > existing.qty && !isCartItemAvailableToday(existing)) return;
 
         if (qty <= 0) {
           set({ items: get().items.filter((i) => i.menu_item_id !== menu_item_id) });

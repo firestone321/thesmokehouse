@@ -118,6 +118,9 @@ export interface SharedMenuItemRow {
   portion_types?: PortionTypeRelation;
   is_active?: boolean | null;
   is_available_today?: boolean | null;
+  availability_days?: number[] | null;
+  availability_start_date?: string | null;
+  availability_end_date?: string | null;
   menu_categories?: MenuCategoryRelation;
   dailyStockMap?: Map<number, number>;
   finishedStockMap?: Map<number, number>;
@@ -135,6 +138,9 @@ export interface StorefrontMenuRpcRow {
   category_name: string | null;
   is_active: boolean;
   is_available_today: boolean;
+  availability_days: number[] | null;
+  availability_start_date: string | null;
+  availability_end_date: string | null;
   available_quantity: number;
 }
 
@@ -161,7 +167,7 @@ export function mapStorefrontMenuRpcRow(
       Boolean(row.is_active) &&
       Boolean(row.is_available_today) &&
       available_quantity > 0 &&
-      isPubliclyAvailableOnServiceDate(row.name, serviceDate)
+       isPubliclyAvailableOnServiceDate({ days: row.availability_days, startDate: row.availability_start_date, endDate: row.availability_end_date }, serviceDate)
   };
 }
 
@@ -192,7 +198,10 @@ export function mapSharedMenuItem(row: SharedMenuItemRow): MenuItem {
     image_url: row.image_url,
     portion_label: portionType?.portion_label ?? null,
     available_quantity: stock.availableQuantity,
-    is_available: Boolean(row.is_active) && Boolean(row.is_available_today) && stock.isInStock
+     is_available: Boolean(row.is_active) && Boolean(row.is_available_today) && stock.isInStock && isPubliclyAvailableOnServiceDate({ days: row.availability_days, startDate: row.availability_start_date, endDate: row.availability_end_date }, getUgandaServiceDate()),
+     availability_days: row.availability_days,
+     availability_start_date: row.availability_start_date,
+     availability_end_date: row.availability_end_date
   };
 }
 

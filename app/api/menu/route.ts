@@ -47,15 +47,17 @@ export async function GET(request: NextRequest) {
       prep_type: string | null;
       is_active: boolean;
       is_available_today: boolean;
+      availability_days: number[] | null;
+      availability_start_date: string | null;
+      availability_end_date: string | null;
       portion_types: { portion_label?: string | null } | { portion_label?: string | null }[] | null;
       menu_categories: { code?: string | null; name?: string | null } | { code?: string | null; name?: string | null }[] | null;
     }
 
     const { data: fallbackRaw } = await supabase
       .from("menu_items")
-      .select("id,name,description,base_price,image_url,prep_type,is_active,is_available_today,portion_types(portion_label),menu_categories(code,name)")
+      .select("id,name,description,base_price,image_url,prep_type,is_active,is_available_today,availability_days,availability_start_date,availability_end_date,portion_types(portion_label),menu_categories(code,name)")
       .eq("is_active", true)
-      .eq("is_available_today", true)
       .order("sort_order")
       .order("name");
 
@@ -74,7 +76,10 @@ export async function GET(request: NextRequest) {
         image_url: item.image_url,
         portion_label: pt?.portion_label ?? null,
         available_quantity: 99,
-        is_available: isPubliclyAvailableOnServiceDate(item.name, serviceDate)
+         is_available: Boolean(item.is_available_today) && isPubliclyAvailableOnServiceDate({ days: item.availability_days, startDate: item.availability_start_date, endDate: item.availability_end_date }, serviceDate),
+        availability_days: item.availability_days,
+        availability_start_date: item.availability_start_date,
+        availability_end_date: item.availability_end_date
       };
     });
 

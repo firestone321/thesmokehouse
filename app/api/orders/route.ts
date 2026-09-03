@@ -24,7 +24,7 @@ export const dynamic = "force-dynamic";
 
 type CheckoutMenuRow = Pick<
   StorefrontMenuRpcRow,
-  "id" | "name" | "base_price" | "is_active" | "is_available_today" | "available_quantity"
+  "id" | "name" | "base_price" | "is_active" | "is_available_today" | "availability_days" | "availability_start_date" | "availability_end_date" | "available_quantity"
 >;
 
 interface PreparedCheckoutRpcRow {
@@ -440,8 +440,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "One or more menu items are unavailable" }, { status: 400 });
     }
 
-    if (!isPubliclyAvailableOnServiceDate(dbItem.name, serviceDate)) {
-      return NextResponse.json({ error: "Oxtail and goat ribs are available Friday through Sunday only." }, { status: 400 });
+    if (!isPubliclyAvailableOnServiceDate({ days: dbItem.availability_days, startDate: dbItem.availability_start_date, endDate: dbItem.availability_end_date }, serviceDate)) {
+      return NextResponse.json({ error: `${dbItem.name} is not available on the selected service date.` }, { status: 400 });
     }
 
     const availableQuantity = Math.max(0, Number(dbItem.available_quantity ?? 0));
