@@ -58,6 +58,7 @@ export async function GET(request: NextRequest) {
       .from("menu_items")
       .select("id,name,description,base_price,image_url,prep_type,is_active,is_available_today,availability_days,availability_start_date,availability_end_date,portion_types(portion_label),menu_categories(code,name)")
       .eq("is_active", true)
+      .eq("pos_only", false)
       .order("sort_order")
       .order("name");
 
