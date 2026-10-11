@@ -608,7 +608,7 @@ export function MenuClient({ items: initialItems }: { items: MenuItem[] }) {
       {safeCount > 0 ? (
         <Link
           href="/cart"
-          className="fixed bottom-4 left-4 right-4 z-40 flex items-center justify-between rounded-xl bg-walnut px-4 py-3 text-cream shadow-xl lg:hidden"
+          className="fixed bottom-4 left-4 right-[calc(env(safe-area-inset-right)_+_84px)] z-40 flex items-center justify-between rounded-xl bg-walnut px-4 py-3 text-cream shadow-xl sm:right-[calc(env(safe-area-inset-right)_+_200px)] lg:right-4 lg:hidden"
         >
           <span className="text-sm font-bold uppercase tracking-wide">{safeCount} Items</span>
           <span className="text-base font-black">{formatCurrency(cartTotal)}</span>

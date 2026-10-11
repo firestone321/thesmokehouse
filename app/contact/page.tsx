@@ -2,13 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { whatsappHref } from "@/lib/contact-links";
 
 export const metadata: Metadata = {
   title: "Contact",
   description: "Contact Firestone Country Smokehouse for orders, directions, and WhatsApp support."
 };
 
-const whatsappNumber = "256700000000";
 const whatsappNumberDisplay = "+256 700 000 000";
 const phoneNumber = "0393002970";
 const phoneNumberDisplay = "0393 002 970";
@@ -51,7 +51,7 @@ export default function ContactPage() {
 
               <div className="mt-6 grid gap-4 sm:grid-cols-2">
                 <a
-                  href={`https://wa.me/${whatsappNumber}?text=Hello%20Firestone%20Country%20Smokehouse`}
+                  href={whatsappHref}
                   target="_blank"
                   rel="noreferrer"
                   className="rounded-2xl border border-[#D5C6B9] bg-[#FFF8EF] p-4 shadow-[0_12px_30px_rgba(42,33,26,0.08)] transition hover:border-[#A66B55]"
