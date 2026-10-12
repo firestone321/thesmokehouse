@@ -3,6 +3,7 @@ import { WhatsAppFloat } from "@/components/whatsapp-float";
 
 export function SiteFooter() {
   return (
+    <>
       <footer className="border-t border-[var(--border)] bg-[var(--surface-alt)] text-[var(--foreground)]">
         <div className="mx-auto grid max-w-7xl gap-6 px-4 pt-8 pb-24 text-sm md:grid-cols-[1fr_auto] md:px-8">
           <div>
@@ -28,8 +29,6 @@ export function SiteFooter() {
               Privacy
             </Link>
           </nav>
-        </div>
-      </footer>
         </div>
       </footer>
       <WhatsAppFloat />
