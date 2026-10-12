@@ -3,13 +3,12 @@ import { WhatsAppFloat } from "@/components/whatsapp-float";
 
 export function SiteFooter() {
   return (
-    <>
       <footer className="border-t border-[var(--border)] bg-[var(--surface-alt)] text-[var(--foreground)]">
         <div className="mx-auto grid max-w-7xl gap-6 px-4 pt-8 pb-24 text-sm md:grid-cols-[1fr_auto] md:px-8">
           <div>
             <p className="font-heading text-2xl tracking-normal text-[var(--foreground)]">FIRESTONE COUNTRY SMOKEHOUSE</p>
             <p className="mt-2 max-w-xl leading-6 text-[var(--muted)]">
-              Slow-fired takeaway, built around paid pickup orders, live stock, and kitchen handoff codes.
+              Slow-fired meats, convenient ordering, and an experience worth coming back to.
             </p>
           </div>
           <nav aria-label="Footer links" className="flex flex-wrap gap-4 md:justify-end">
@@ -29,6 +28,8 @@ export function SiteFooter() {
               Privacy
             </Link>
           </nav>
+        </div>
+      </footer>
         </div>
       </footer>
       <WhatsAppFloat />
